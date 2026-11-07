@@ -1,0 +1,72 @@
+# Unit tests for alerts.yml. Run from the repository root:
+#   promtool test rules infra/prometheus/tests/alerts-test.yml
+rule_files:
+  - ../alerts.yml
+
+evaluation_interval: 5s
+
+tests:
+  # order-service stops answering scrapes at 30s; inventory-service stays up.
+  - interval: 5s
+    input_series:
+      - series: 'up{job="order-service", instance="order-service:8080", service="order-service", container="strata-order-service-1"}'
+        values: '1 1 1 1 1 1 0 0 0 0 0 0 0'
+      - series: 'up{job="inventory-service", instance="inventory-service:8080", service="inventory-service", container="strata-inventory-service-1"}'
+        values: '1 1 1 1 1 1 1 1 1 1 1 1 1'
+    alert_rule_test:
+      # Down for 5s: still pending, not firing.
+      - eval_time: 35s
+        alertname: ServiceDown
+        exp_alerts: []
+      # Down for 15s (> 10s): firing, with the labels the healer needs.
+      - eval_time: 45s
+        alertname: ServiceDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: order-service
+              instance: order-service:8080
+              service: order-service
+              container: strata-order-service-1
+            exp_annotations:
+              summary: "order-service is down"
+              description: "Prometheus could not scrape strata-order-service-1 (order-service:8080) for 10s."
+
+  # Prometheus itself going down is not a target-service alert.
+  - interval: 5s
+    input_series:
+      - series: 'up{job="prometheus", instance="localhost:9090"}'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: ServiceDown
+        exp_alerts: []
+
+  # order-service: 10 req/s, 5 of them 5xx (50%) -> fires after 30s.
+  # inventory-service: 10 req/s, 1 of them 5xx (10%) -> stays quiet.
+  # Actuator traffic and /chaos/* calls are ignored.
+  - interval: 5s
+    input_series:
+      - series: 'http_server_requests_seconds_count{job="order-service", service="order-service", container="strata-order-service-1", uri="/orders", status="200"}'
+        values: '0+25x30'
+      - series: 'http_server_requests_seconds_count{job="order-service", service="order-service", container="strata-order-service-1", uri="/orders", status="500"}'
+        values: '0+25x30'
+      - series: 'http_server_requests_seconds_count{job="inventory-service", service="inventory-service", container="strata-inventory-service-1", uri="/inventory", status="200"}'
+        values: '0+45x30'
+      - series: 'http_server_requests_seconds_count{job="inventory-service", service="inventory-service", container="strata-inventory-service-1", uri="/inventory", status="500"}'
+        values: '0+5x30'
+      - series: 'http_server_requests_seconds_count{job="inventory-service", service="inventory-service", container="strata-inventory-service-1", uri="/actuator/prometheus", status="200"}'
+        values: '0+100x30'
+      - series: 'http_server_requests_seconds_count{job="inventory-service", service="inventory-service", container="strata-inventory-service-1", uri="/chaos/error", status="500"}'
+        values: '0+100x30'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: HighErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: order-service
+              container: strata-order-service-1
+            exp_annotations:
+              summary: "order-service error rate is high"
+              description: "50% of requests to strata-order-service-1 returned 5xx over the last minute."

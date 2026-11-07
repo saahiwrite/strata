@@ -103,7 +103,7 @@ curl http://localhost:9000/api/audit/verify
 |---|---|
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Database for incidents, decisions, trust records and the audit log |
 | `HEALER_PORT` | Port of the STRATA healer (default 9000) |
-| `POSTGRES_PORT`, `PROMETHEUS_PORT` | Host ports for PostgreSQL (default 5432) and Prometheus (default 9090); change them only if those ports are taken |
+| `POSTGRES_PORT`, `PROMETHEUS_PORT`, `ALERTMANAGER_PORT` | Host ports for PostgreSQL (default 5432), Prometheus (default 9090) and Alertmanager (default 9093); change them only if those ports are taken |
 | `DOCKER_HOST` | Only if docker-java can't find the Docker socket (some macOS/Windows setups) |
 
 ## Progress So Far
@@ -111,7 +111,7 @@ curl http://localhost:9000/api/audit/verify
 | Functional Requirement (from Phase 1) | Status | Notes |
 |---|---|---|
 | FR1: Services expose metrics, JSON logs and failure switches (error, slow, crash, memory growth) | Not started | Phase 2: order-service and inventory-service with `/chaos/*` |
-| FR2: Alert on defined thresholds and open an incident | Not started | Phase 2: `ServiceDown` and `HighErrorRate` rules, webhook to the healer |
+| FR2: Alert on defined thresholds and open an incident | In review | `ServiceDown` (scrape fails 10s) and `HighErrorRate` (>20% 5xx for 30s) rules with `promtool` tests; Alertmanager posts them to the healer's `/api/alerts` (#6). Opening the incident is the healer's part |
 | FR3: Diagnose with rules first; use the LLM when no rule matches | Not started | Phase 2: rule matcher. Phase 3: LLM (Ollama) |
 | FR4: Treat logs as untrusted and run only allow-listed actions | Not started | Phase 2: action validator. Phase 3: prompt-injection defense |
 | FR5: Score each action by blast radius, reversibility, environment, diagnosis confidence and past failures | Not started | Phase 2: risk scorer with YAML weights |
@@ -127,7 +127,7 @@ curl http://localhost:9000/api/audit/verify
 
 ## Testing So Far
 
-- No tests yet.
+- Prometheus alert rules: `promtool test rules infra/prometheus/tests/alerts-test.yml` (ServiceDown pending vs firing, Prometheus itself ignored, HighErrorRate above vs below 20%, actuator and `/chaos/*` calls ignored).
 - Planned for Phase 2:
   - **Unit tests (JUnit 5):** `PolicyLoaderTest`, `RiskScorerTest`, `ActionValidatorTest`, `HashChainTest`, `TrustServiceTest`, `AlertParserTest`, `RuleMatcherTest`, `CooldownGuardTest`, `ChaosControllerTest`
   - **Integration test (Testcontainers):** `CrashRecoveryIT`
@@ -149,6 +149,6 @@ curl http://localhost:9000/api/audit/verify
 | Member | Contributions This Phase |
 |---|---|
 | Nida Esen | _To be filled in_ |
-| Shivani Radhakrishnan | `docker-compose.yml` with PostgreSQL and Prometheus (health checks, named volumes, fixed `strata` project name so containers are `strata-<service>-1`); Prometheus scrape config for both target services with `service` and `container` labels; optional port variables in `.env.example` |
+| Shivani Radhakrishnan | `docker-compose.yml` with PostgreSQL and Prometheus (health checks, named volumes, fixed `strata` project name so containers are `strata-<service>-1`); Prometheus scrape config for both target services with `service` and `container` labels; optional port variables in `.env.example`; `ServiceDown` and `HighErrorRate` alert rules with `promtool` tests; Alertmanager routing every alert (firing and resolved) to the healer's webhook |
 | Madhuri Hegde | _To be filled in_ |
 | Saahithi Mallarapu | Created the public repository, folder scaffold, `.env.example`, `.gitignore`, labels, Phase 2 milestone and issues; wrote this README |
