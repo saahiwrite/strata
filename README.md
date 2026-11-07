@@ -46,7 +46,8 @@ strata/
     prometheus/           Scrape config and alert rules
     alertmanager/         Routes alerts to the healer's webhook
     loki/  promtail/      Log storage and log shipping
-    grafana/provisioning/ Data sources and dashboards (error rate, latency, memory)
+    grafana/provisioning/ Data sources (Prometheus, Loki, Alertmanager) and the dashboard provider
+    grafana/dashboards/   "STRATA target services" dashboard: up/down, error rate, p95 latency, request rate, heap, logs
   scenarios/              Catalogue of the 15-20 injected failures and the inject.sh script
   docs/                   Phase 1 design document and other project docs
   .github/workflows/      CI (mvn verify)
@@ -81,6 +82,9 @@ mvn clean package -DskipTests
 # Loki, Promtail, Grafana and the STRATA healer
 docker compose up --build
 
+# Grafana: http://localhost:3000 (STRATA target services dashboard)
+# Prometheus: http://localhost:9090   Alertmanager: http://localhost:9093
+
 # Run tests (unit tests; integration tests need Docker running)
 mvn verify
 ```
@@ -103,7 +107,8 @@ curl http://localhost:9000/api/audit/verify
 |---|---|
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Database for incidents, decisions, trust records and the audit log |
 | `HEALER_PORT` | Port of the STRATA healer (default 9000) |
-| `POSTGRES_PORT`, `PROMETHEUS_PORT`, `ALERTMANAGER_PORT` | Host ports for PostgreSQL (default 5432), Prometheus (default 9090) and Alertmanager (default 9093); change them only if those ports are taken |
+| `POSTGRES_PORT`, `PROMETHEUS_PORT`, `ALERTMANAGER_PORT`, `LOKI_PORT`, `GRAFANA_PORT` | Host ports for PostgreSQL (5432), Prometheus (9090), Alertmanager (9093), Loki (3100) and Grafana (3000); change them only if those ports are taken |
+| `GRAFANA_ADMIN_PASSWORD` | Grafana admin password (default `admin`). Dashboards can be viewed without logging in |
 | `DOCKER_HOST` | Only if docker-java can't find the Docker socket (some macOS/Windows setups) |
 
 ## Progress So Far
@@ -149,6 +154,6 @@ curl http://localhost:9000/api/audit/verify
 | Member | Contributions This Phase |
 |---|---|
 | Nida Esen | _To be filled in_ |
-| Shivani Radhakrishnan | `docker-compose.yml` with PostgreSQL and Prometheus (health checks, named volumes, fixed `strata` project name so containers are `strata-<service>-1`); Prometheus scrape config for both target services with `service` and `container` labels; optional port variables in `.env.example`; `ServiceDown` and `HighErrorRate` alert rules with `promtool` tests; Alertmanager routing every alert (firing and resolved) to the healer's webhook |
+| Shivani Radhakrishnan | `docker-compose.yml` with PostgreSQL and Prometheus (health checks, named volumes, fixed `strata` project name so containers are `strata-<service>-1`); Prometheus scrape config for both target services with `service` and `container` labels; optional port variables in `.env.example`; `ServiceDown` and `HighErrorRate` alert rules with `promtool` tests; Alertmanager routing every alert (firing and resolved) to the healer's webhook; Loki and Promtail (container logs with `service`, `container` and `level` labels); Grafana with provisioned data sources and the STRATA target services dashboard; `PrometheusClient` and `PrometheusRecoveryVerifier` (recovery = all targets up and low 5xx share for 3 checks in a row) with their unit tests |
 | Madhuri Hegde | _To be filled in_ |
 | Saahithi Mallarapu | Created the public repository, folder scaffold, `.env.example`, `.gitignore`, labels, Phase 2 milestone and issues; wrote this README |
