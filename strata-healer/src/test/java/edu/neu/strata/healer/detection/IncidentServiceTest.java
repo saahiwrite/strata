@@ -1,31 +1,40 @@
 package edu.neu.strata.healer.detection;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Instant;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.simple.JdbcClient;
 
 import edu.neu.strata.healer.model.Alert;
+import edu.neu.strata.healer.persistence.IncidentStore;
+import edu.neu.strata.healer.persistence.TestDatabase;
 
 class IncidentServiceTest {
 
-    private final IncidentService service = new IncidentService();
+    private final TestDatabase db = new TestDatabase();
+    private final JdbcClient jdbc = JdbcClient.create(db.dataSource);
+    private final IncidentService service = new IncidentService(new IncidentStore(jdbc));
 
     private Alert alert(String name, String svc) {
-        return new Alert(name, svc, svc + "-1", "critical", Instant.parse("2026-11-06T10:00:00Z"));
+        return new Alert(name, svc, "strata-" + svc + "-1", "critical", Instant.parse("2026-11-06T10:00:00Z"));
+    }
+
+    private String statusOf(long id) {
+        return jdbc.sql("SELECT status FROM incidents WHERE id = ?").param(id).query(String.class).single();
     }
 
     @Test
     void opensIncidentFromAlert() {
         Incident incident = service.open(alert("ServiceDown", "order-service"));
 
-        assertEquals(IncidentStatus.OPEN, incident.getStatus());
-        assertEquals("order-service", incident.getAlert().service());
-        assertTrue(service.find(incident.getId()).isPresent());
+        assertEquals("order-service", incident.alert().service());
+        assertEquals("OPEN", statusOf(incident.id()));
+        assertTrue(service.findOpen("order-service", "ServiceDown").isPresent());
     }
 
     @Test
@@ -33,36 +42,36 @@ class IncidentServiceTest {
         Incident first = service.open(alert("ServiceDown", "order-service"));
         Incident second = service.open(alert("ServiceDown", "order-service"));
 
-        assertSame(first, second);
-        assertEquals(1, service.findAll().size());
+        assertEquals(first.id(), second.id());
     }
 
     @Test
     void differentServiceOpensNewIncident() {
-        service.open(alert("ServiceDown", "order-service"));
-        service.open(alert("ServiceDown", "inventory-service"));
+        Incident first = service.open(alert("ServiceDown", "order-service"));
+        Incident second = service.open(alert("ServiceDown", "inventory-service"));
 
-        assertEquals(2, service.findAll().size());
+        assertNotEquals(first.id(), second.id());
     }
 
     @Test
     void resolvedIncidentIsClosedAndAllowsNewOne() {
         Incident first = service.open(alert("ServiceDown", "order-service"));
-        service.resolve(first.getId());
+        service.resolve(first.id());
 
-        assertEquals(IncidentStatus.RESOLVED, first.getStatus());
-        assertNotNull(first.getClosedAt());
+        assertEquals("RESOLVED", statusOf(first.id()));
+        assertNotNull(jdbc.sql("SELECT closed_at FROM incidents WHERE id = ?").param(first.id())
+                .query(Object.class).single());
+        assertTrue(service.findOpen("order-service", "ServiceDown").isEmpty());
 
         Incident second = service.open(alert("ServiceDown", "order-service"));
-        assertEquals(2, service.findAll().size());
-        assertEquals(IncidentStatus.OPEN, second.getStatus());
+        assertNotEquals(first.id(), second.id());
     }
 
     @Test
     void escalateMarksIncidentEscalated() {
         Incident incident = service.open(alert("HighErrorRate", "order-service"));
-        service.escalate(incident.getId());
+        service.escalate(incident.id());
 
-        assertEquals(IncidentStatus.ESCALATED, incident.getStatus());
+        assertEquals("ESCALATED", statusOf(incident.id()));
     }
 }

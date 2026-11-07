@@ -9,23 +9,23 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import edu.neu.strata.healer.detection.AlertParser;
-import edu.neu.strata.healer.detection.IncidentService;
+import edu.neu.strata.healer.orchestration.HealingOrchestrator;
 
 @RestController
 @RequestMapping("/api/alerts")
 public class AlertWebhookController {
 
     private final AlertParser alertParser;
-    private final IncidentService incidentService;
+    private final HealingOrchestrator orchestrator;
 
-    public AlertWebhookController(AlertParser alertParser, IncidentService incidentService) {
+    public AlertWebhookController(AlertParser alertParser, HealingOrchestrator orchestrator) {
         this.alertParser = alertParser;
-        this.incidentService = incidentService;
+        this.orchestrator = orchestrator;
     }
 
     @PostMapping
     public ResponseEntity<Void> receive(@RequestBody Map<String, Object> payload) {
-        alertParser.parse(payload).forEach(incidentService::open);
+        alertParser.parse(payload).forEach(orchestrator::handle);
         return ResponseEntity.accepted().build();
     }
 }
