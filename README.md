@@ -108,7 +108,7 @@ curl http://localhost:9000/api/audit/verify
 
 | Functional Requirement (from Phase 1) | Status | Notes |
 |---|---|---|
-| FR1: Services expose metrics, JSON logs and failure switches (error, slow, crash, memory growth) | Done | order-service (:8081) and inventory-service (:8082) behind Nginx (:8080), `/actuator/prometheus`, JSON logs on stdout, `/chaos/crash\|error\|slow\|memory\|reset`; 18-scenario catalogue and `scenarios/inject.sh` |
+| FR1: Services expose metrics, JSON logs and failure switches (error, slow, crash, memory growth) | Done | order-service and inventory-service (both on :8080 in their containers) behind Nginx (:8080 on the host), `/actuator/prometheus`, JSON logs on stdout, `/chaos/crash\|error\|slow\|memory\|reset`; 18-scenario catalogue and `scenarios/inject.sh` |
 | FR2: Alert on defined thresholds and open an incident | Not started | Phase 2: `ServiceDown` and `HighErrorRate` rules, webhook to the healer |
 | FR3: Diagnose with rules first; use the LLM when no rule matches | Not started | Phase 2: rule matcher. Phase 3: LLM (Ollama) |
 | FR4: Treat logs as untrusted and run only allow-listed actions | Not started | Phase 2: action validator. Phase 3: prompt-injection defense |
