@@ -110,7 +110,7 @@ curl http://localhost:9000/api/audit/verify
 
 | Functional Requirement (from Phase 1) | Status | Notes |
 |---|---|---|
-| FR1: Services expose metrics, JSON logs and failure switches (error, slow, crash, memory growth) | Not started | Phase 2: order-service and inventory-service with `/chaos/*` |
+| FR1: Services expose metrics, JSON logs and failure switches (error, slow, crash, memory growth) | Done | order-service (:8081) and inventory-service (:8082) behind Nginx (:8080), `/actuator/prometheus`, JSON logs on stdout, `/chaos/crash\|error\|slow\|memory\|reset`; 18-scenario catalogue and `scenarios/inject.sh` |
 | FR2: Alert on defined thresholds and open an incident | Not started | Phase 2: `ServiceDown` and `HighErrorRate` rules, webhook to the healer |
 | FR3: Diagnose with rules first; use the LLM when no rule matches | Not started | Phase 2: rule matcher. Phase 3: LLM (Ollama) |
 | FR4: Treat logs as untrusted and run only allow-listed actions | In review | `allowList` in `policy.yaml` (actions and targets) and `ActionValidator`, which also rejects targets that aren't plain container names (#12). Phase 3: prompt-injection defense |
@@ -127,6 +127,7 @@ curl http://localhost:9000/api/audit/verify
 
 ## Testing So Far
 
+- **Target services:** 23 unit and MockMvc tests in each of `order-service` and `inventory-service` (API, Prometheus metrics, JSON logging, every chaos switch and its input validation). Run with `mvn verify` inside each service folder.
 - **In review (unit tests, JUnit 5, run by `mvn verify`):** the shared types, `PolicyLoaderTest`, `RiskScorerTest`, `PolicyConfigTest` (#8), and `AllowListTest`, `ActionValidatorTest`, `HashChainTest`, `AuditLogServiceTest` (tampering, deleted entries, forks, 40 concurrent appends), `SchemaMigrationTest` and `AuditConfigTest` (#12), and `TrustRecordTest`, `TrustServiceTest` (40 concurrent updates, audit entries, failures raising the risk score) and `ApiTest` (the incidents, audit and trust endpoints, including a tampered log) (#14). The persistence tests run the real Flyway migrations on in-memory H2 in PostgreSQL mode; `CrashRecoveryIT` will cover real PostgreSQL.
 - Planned for Phase 2:
   - **Unit tests (JUnit 5):** `PolicyLoaderTest`, `RiskScorerTest`, `ActionValidatorTest`, `HashChainTest`, `TrustServiceTest`, `AlertParserTest`, `RuleMatcherTest`, `CooldownGuardTest`, `ChaosControllerTest`
@@ -148,7 +149,7 @@ curl http://localhost:9000/api/audit/verify
 
 | Member | Contributions This Phase |
 |---|---|
-| Nida Esen | _To be filled in_ |
+| Nida Esen | Built `order-service` and `inventory-service` (Spring Boot 3, Actuator, Prometheus metrics, JSON logs via Logback); the failure switches (crash, error rate, slow responses, memory growth, reset) with their metrics; the Nginx entry point on :8080; the 18-scenario failure catalogue and `scenarios/inject.sh`; `ChaosControllerTest`, `ChaosStateTest`, `MemoryLeakTest`, `OrderControllerTest`, `InventoryControllerTest`, `JsonLoggingTest` |
 | Shivani Radhakrishnan | _To be filled in_ |
 | Madhuri Hegde | _To be filled in_ |
 | Saahithi Mallarapu | Created the public repository, folder scaffold, `.env.example`, `.gitignore`, labels, Phase 2 milestone and issues; wrote this README; parent `pom.xml`, the Phase 1 design doc in `docs/`, and the shared types between the healing stages (`model/`, `ActionExecutor`, `RecoveryVerifier`) with their unit tests; the YAML risk policy (`policy.yaml`, `PolicyLoader`) and the `RiskScorer` (5 factors → score 0-100 → L0-L3) with `PolicyLoaderTest` and `RiskScorerTest`; the action allow-list and `ActionValidator`, the Flyway schema (incidents, decisions, action_trust, audit_log) and the SHA-256 hash-chained audit log (`HashChain`, `AuditLogService`) with their tests; the trust records (`TrustService`) and the incidents, audit and trust JSON API with their tests |
