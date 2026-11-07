@@ -23,7 +23,7 @@ public class CooldownGuard {
         this(Duration.ofSeconds(seconds), Clock.systemUTC());
     }
 
-    CooldownGuard(Duration cooldown, Clock clock) {
+    public CooldownGuard(Duration cooldown, Clock clock) {
         this.cooldown = cooldown;
         this.clock = clock;
     }

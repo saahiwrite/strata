@@ -10,3 +10,5 @@ strata:
     url: ${LOKI_URL:http://loki:3100}
   cooldown:
     seconds: 60
+  verify:
+    timeout-seconds: 30
