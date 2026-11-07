@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  STRATA parent pom. Every Java module (strata-healer, and the target services
+  once they are added) uses this as its parent, so the Spring Boot version,
+  the Java version and the plugin setup live in one place.
+
+  Build everything from the repository root:  mvn verify
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.5</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>edu.neu.strata</groupId>
+    <artifactId>strata-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>strata-parent</name>
+    <description>STRATA: Self-healing with Trust and Risk-Adaptive Autonomy</description>
+
+    <modules>
+        <!-- target-services/order-service and target-services/inventory-service are added here when they land -->
+        <module>strata-healer</module>
+    </modules>
+
+    <properties>
+        <java.version>21</java.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    </properties>
+</project>

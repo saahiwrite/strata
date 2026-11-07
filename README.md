@@ -28,6 +28,7 @@ strata/
     inventory-service/    Second Spring Boot service, behind Nginx with order-service
   strata-healer/          The STRATA healer (Spring Boot, Java 21)
     src/main/java/edu/neu/strata/healer/
+      model/              Shared types between the stages: Alert, Diagnosis, ActionType, AutonomyLevel, RiskAssessment, ExecutionResult
       api/                REST endpoints: Alertmanager webhook, incidents and audit API
       detection/          Turns incoming alerts into incidents
       diagnosis/          Rule matcher (rules.yaml) and Loki log client; LLM diagnosis later
@@ -48,9 +49,10 @@ strata/
     loki/  promtail/      Log storage and log shipping
     grafana/provisioning/ Data sources and dashboards (error rate, latency, memory)
   scenarios/              Catalogue of the 15-20 injected failures and the inject.sh script
-  docs/                   Phase 1 design document and other project docs
+  docs/                   Phase 1 design document (phase1-design.md) and other project docs
   .github/workflows/      CI (mvn verify)
   .env.example            Example environment variables (copy to .env)
+  pom.xml                 Parent pom (Spring Boot 3.3, Java 21); lists every Maven module
 ```
 
 ## Setup and Run
@@ -149,4 +151,4 @@ curl http://localhost:9000/api/audit/verify
 | Nida Esen | _To be filled in_ |
 | Shivani Radhakrishnan | _To be filled in_ |
 | Madhuri Hegde | _To be filled in_ |
-| Saahithi Mallarapu | Created the public repository, folder scaffold, `.env.example`, `.gitignore`, labels, Phase 2 milestone and issues; wrote this README |
+| Saahithi Mallarapu | Created the public repository, folder scaffold, `.env.example`, `.gitignore`, labels, Phase 2 milestone and issues; wrote this README; parent `pom.xml`, the Phase 1 design doc in `docs/`, and the shared types between the healing stages (`model/`, `ActionExecutor`, `RecoveryVerifier`) with their unit tests |
