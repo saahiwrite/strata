@@ -6,8 +6,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.yaml.snakeyaml.LoaderOptions;
@@ -26,9 +29,10 @@ public final class PolicyLoader {
     public static final String DEFAULT_RESOURCE = "policy.yaml";
 
     private static final Set<String> TOP_LEVEL_KEYS =
-            Set.of("environment", "weights", "thresholds", "environments", "actions");
+            Set.of("environment", "weights", "thresholds", "environments", "actions", "allowList");
     private static final Set<String> THRESHOLD_KEYS = Set.of("l1From", "l2From", "l3From");
     private static final Set<String> ACTION_KEYS = Set.of("blastRadius", "reversibility", "minLevel");
+    private static final Set<String> ALLOW_LIST_KEYS = Set.of("actions", "targets");
 
     /** Loads the policy bundled on the classpath. */
     public Policy loadDefault() {
@@ -125,7 +129,34 @@ public final class PolicyLoader {
             }
         }
 
-        return new Policy(environment, weights, thresholds, environments, actions);
+        AllowList allowList = doc.get("allowList") == null
+                ? AllowList.NONE
+                : allowList(map(doc.get("allowList"), "allowList"));
+
+        return new Policy(environment, weights, thresholds, environments, actions, allowList);
+    }
+
+    private static AllowList allowList(Map<String, Object> yaml) {
+        checkKeys(yaml, ALLOW_LIST_KEYS, "allowList");
+        Set<ActionType> actions = EnumSet.noneOf(ActionType.class);
+        for (Object name : list(yaml.get("actions"), "allowList.actions")) {
+            actions.add(enumValue(ActionType.class, text(name, "allowList.actions"), "allowList.actions"));
+        }
+        List<String> targets = new ArrayList<>();
+        for (Object target : list(yaml.get("targets"), "allowList.targets")) {
+            targets.add(text(target, "allowList.targets"));
+        }
+        return new AllowList(actions, targets);
+    }
+
+    private static List<?> list(Object value, String where) {
+        if (value == null) {
+            return List.of();
+        }
+        if (!(value instanceof List<?> l)) {
+            throw new IllegalArgumentException(where + " must be a list");
+        }
+        return l;
     }
 
     @SuppressWarnings("unchecked")

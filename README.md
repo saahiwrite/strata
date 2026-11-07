@@ -113,21 +113,21 @@ curl http://localhost:9000/api/audit/verify
 | FR1: Services expose metrics, JSON logs and failure switches (error, slow, crash, memory growth) | Not started | Phase 2: order-service and inventory-service with `/chaos/*` |
 | FR2: Alert on defined thresholds and open an incident | Not started | Phase 2: `ServiceDown` and `HighErrorRate` rules, webhook to the healer |
 | FR3: Diagnose with rules first; use the LLM when no rule matches | Not started | Phase 2: rule matcher. Phase 3: LLM (Ollama) |
-| FR4: Treat logs as untrusted and run only allow-listed actions | Not started | Phase 2: action validator. Phase 3: prompt-injection defense |
+| FR4: Treat logs as untrusted and run only allow-listed actions | In review | `allowList` in `policy.yaml` (actions and targets) and `ActionValidator`, which also rejects targets that aren't plain container names (#12). Phase 3: prompt-injection defense |
 | FR5: Score each action by blast radius, reversibility, environment, diagnosis confidence and past failures | In review | `policy.yaml` (weights, environments, per-action risk), `PolicyLoader`, `RiskScorer` (#8) |
 | FR6: Map the score to L0 auto, L1 auto with undo, L2 approval, L3 human only | In review | Thresholds in `policy.yaml`; an action can have a `minLevel` (rollback always needs approval) (#8) |
 | FR7: Support restart, scale out and rollback | Not started | Phase 2: restart. Phase 3: scale out and rollback |
 | FR8: For L2, show a preview, wait for approval, fall back to a safe action on timeout | Not started | Phase 3 |
 | FR9: Verify recovery; roll back and escalate if the service did not recover | Not started | Phase 2: recovery verifier. Phase 3: rollback and escalation |
 | FR10: Promote or demote each action's level from its success record | Not started | Phase 2: trust records. Phase 3: earned autonomy |
-| FR11: Write every decision to a tamper-evident audit log | Not started | Phase 2: SHA-256 hash chain |
+| FR11: Write every decision to a tamper-evident audit log | In review | SHA-256 hash chain (`HashChain`), `AuditLogService` (append, verify) and the Flyway schema for incidents, decisions, trust records and the audit log (#12). The orchestrator calls it once the pipeline is wired |
 | FR12: Show incidents, approvals and action levels on a dashboard | Not started | Phase 2: JSON API. Phase 3: Thymeleaf dashboard |
 
 **Working end to end:** nothing yet. So far the repository has the folder layout that matches our Phase 1 design, an `.env.example` and a `.gitignore`. By the end of Phase 2 the goal is that `docker compose up` starts everything and a crashed service is detected, restarted and verified with no human input.
 
 ## Testing So Far
 
-- No tests yet.
+- **In review (unit tests, JUnit 5, run by `mvn verify`):** the shared types, `PolicyLoaderTest`, `RiskScorerTest`, `PolicyConfigTest` (#8), and `AllowListTest`, `ActionValidatorTest`, `HashChainTest`, `AuditLogServiceTest` (tampering, deleted entries, forks, 40 concurrent appends), `SchemaMigrationTest` and `AuditConfigTest` (#12). The persistence tests run the real Flyway migrations on in-memory H2 in PostgreSQL mode; `CrashRecoveryIT` will cover real PostgreSQL.
 - Planned for Phase 2:
   - **Unit tests (JUnit 5):** `PolicyLoaderTest`, `RiskScorerTest`, `ActionValidatorTest`, `HashChainTest`, `TrustServiceTest`, `AlertParserTest`, `RuleMatcherTest`, `CooldownGuardTest`, `ChaosControllerTest`
   - **Integration test (Testcontainers):** `CrashRecoveryIT`
@@ -151,4 +151,4 @@ curl http://localhost:9000/api/audit/verify
 | Nida Esen | _To be filled in_ |
 | Shivani Radhakrishnan | _To be filled in_ |
 | Madhuri Hegde | _To be filled in_ |
-| Saahithi Mallarapu | Created the public repository, folder scaffold, `.env.example`, `.gitignore`, labels, Phase 2 milestone and issues; wrote this README; parent `pom.xml`, the Phase 1 design doc in `docs/`, and the shared types between the healing stages (`model/`, `ActionExecutor`, `RecoveryVerifier`) with their unit tests; the YAML risk policy (`policy.yaml`, `PolicyLoader`) and the `RiskScorer` (5 factors → score 0-100 → L0-L3) with `PolicyLoaderTest` and `RiskScorerTest` |
+| Saahithi Mallarapu | Created the public repository, folder scaffold, `.env.example`, `.gitignore`, labels, Phase 2 milestone and issues; wrote this README; parent `pom.xml`, the Phase 1 design doc in `docs/`, and the shared types between the healing stages (`model/`, `ActionExecutor`, `RecoveryVerifier`) with their unit tests; the YAML risk policy (`policy.yaml`, `PolicyLoader`) and the `RiskScorer` (5 factors → score 0-100 → L0-L3) with `PolicyLoaderTest` and `RiskScorerTest`; the action allow-list and `ActionValidator`, the Flyway schema (incidents, decisions, action_trust, audit_log) and the SHA-256 hash-chained audit log (`HashChain`, `AuditLogService`) with their tests |

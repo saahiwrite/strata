@@ -14,13 +14,15 @@ import java.util.Objects;
  * @param thresholds   where each autonomy level starts
  * @param environments risk (0.0-1.0) of each known environment
  * @param actions      risk values of each action the policy knows
+ * @param allowList    the actions and targets STRATA may ever run (FR4)
  */
 public record Policy(
         String environment,
         Map<RiskFactor, Integer> weights,
         Thresholds thresholds,
         Map<String, Double> environments,
-        Map<ActionType, ActionPolicy> actions) {
+        Map<ActionType, ActionPolicy> actions,
+        AllowList allowList) {
 
     /** The weights must add up to this, so the score is 0-100. */
     public static final int TOTAL_WEIGHT = 100;
@@ -56,6 +58,17 @@ public record Policy(
         environments.forEach((name, risk) -> requireUnit(risk, "environments." + name));
 
         actions = actions == null || actions.isEmpty() ? Map.of() : Map.copyOf(new EnumMap<>(actions));
+        allowList = allowList == null ? AllowList.NONE : allowList;
+    }
+
+    /** A policy without an allow-list (so nothing may run); handy for scoring-only tests. */
+    public Policy(
+            String environment,
+            Map<RiskFactor, Integer> weights,
+            Thresholds thresholds,
+            Map<String, Double> environments,
+            Map<ActionType, ActionPolicy> actions) {
+        this(environment, weights, thresholds, environments, actions, AllowList.NONE);
     }
 
     public int weight(RiskFactor factor) {

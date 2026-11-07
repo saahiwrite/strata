@@ -152,4 +152,41 @@ class PolicyLoaderTest {
     void refusesToBuildJavaObjectsFromTags() {
         assertRejected("!!java.io.File [\"/etc/passwd\"]", "not valid YAML");
     }
+
+    @Test
+    void readsTheAllowList() {
+        Policy policy = load(VALID + """
+                allowList:
+                  actions: [RESTART, SCALE_OUT]
+                  targets: [order-service, strata-order-service-*]
+                """);
+
+        assertThat(policy.allowList().actions()).containsExactlyInAnyOrder(ActionType.RESTART, ActionType.SCALE_OUT);
+        assertThat(policy.allowList().targets()).containsExactly("order-service", "strata-order-service-*");
+    }
+
+    @Test
+    void noAllowListAllowsNothing() {
+        assertThat(load(VALID).allowList()).isEqualTo(AllowList.NONE);
+    }
+
+    @Test
+    void bundledAllowListOnlyRestartsTheTargetServices() {
+        AllowList allowList = loader.loadDefault().allowList();
+
+        assertThat(allowList.actions()).containsExactly(ActionType.RESTART);
+        assertThat(allowList.allowsTarget("order-service")).isTrue();
+        assertThat(allowList.allowsTarget("strata-inventory-service-1")).isTrue();
+        assertThat(allowList.allowsTarget("postgres")).isFalse();
+    }
+
+    @Test
+    void rejectsBadAllowLists() {
+        assertRejected(VALID + "allowList:\n  actions: [DELETE_DATABASE]\n", "unknown ActionType 'DELETE_DATABASE'");
+        assertRejected(VALID + "allowList:\n  commands: [ls]\n", "unknown key 'commands' in allowList");
+        assertRejected(VALID + "allowList:\n  actions: RESTART\n", "allowList.actions must be a list");
+        assertRejected(VALID + "allowList:\n  targets: ['order-service; rm -rf /']\n", "must be a container or service name");
+        assertRejected(VALID + "allowList:\n  targets: ['*']\n", "must be a container or service name");
+        assertRejected(VALID + "allowList: [RESTART]\n", "allowList must be a mapping");
+    }
 }
