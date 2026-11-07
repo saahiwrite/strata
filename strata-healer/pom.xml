@@ -60,9 +60,12 @@
         </dependency>
     </dependencies>
 
-    <!--
-      The spring-boot-maven-plugin (executable jar) is added together with
-      StrataHealerApplication in the healer skeleton (#4 / PR #19); without a
-      main class its repackage goal would fail.
-    -->
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
 </project>
