@@ -51,6 +51,7 @@ strata/
   docs/                   Phase 1 design document and other project docs
   .github/workflows/      CI (mvn verify)
   .env.example            Example environment variables (copy to .env)
+  docker-compose.yml      The whole stack; `docker compose up` starts it
 ```
 
 ## Setup and Run
@@ -102,6 +103,7 @@ curl http://localhost:9000/api/audit/verify
 |---|---|
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Database for incidents, decisions, trust records and the audit log |
 | `HEALER_PORT` | Port of the STRATA healer (default 9000) |
+| `POSTGRES_PORT`, `PROMETHEUS_PORT` | Host ports for PostgreSQL (default 5432) and Prometheus (default 9090); change them only if those ports are taken |
 | `DOCKER_HOST` | Only if docker-java can't find the Docker socket (some macOS/Windows setups) |
 
 ## Progress So Far
@@ -147,6 +149,6 @@ curl http://localhost:9000/api/audit/verify
 | Member | Contributions This Phase |
 |---|---|
 | Nida Esen | _To be filled in_ |
-| Shivani Radhakrishnan | _To be filled in_ |
+| Shivani Radhakrishnan | `docker-compose.yml` with PostgreSQL and Prometheus (health checks, named volumes, fixed `strata` project name so containers are `strata-<service>-1`); Prometheus scrape config for both target services with `service` and `container` labels; optional port variables in `.env.example` |
 | Madhuri Hegde | _To be filled in_ |
 | Saahithi Mallarapu | Created the public repository, folder scaffold, `.env.example`, `.gitignore`, labels, Phase 2 milestone and issues; wrote this README |
