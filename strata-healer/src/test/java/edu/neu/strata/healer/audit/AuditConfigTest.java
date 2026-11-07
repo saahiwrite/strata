@@ -4,7 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import edu.neu.strata.healer.model.ActionType;
 import edu.neu.strata.healer.model.Diagnosis;
+import edu.neu.strata.healer.persistence.IncidentRepository;
+import edu.neu.strata.healer.persistence.PersistenceConfig;
 import edu.neu.strata.healer.policy.PolicyConfig;
+import edu.neu.strata.healer.trust.TrustConfig;
+import edu.neu.strata.healer.trust.TrustService;
 import edu.neu.strata.healer.validation.ActionValidator;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -27,7 +31,8 @@ class AuditConfigTest {
                     JdbcClientAutoConfiguration.class,
                     DataSourceTransactionManagerAutoConfiguration.class))
             .withPropertyValues("spring.datasource.url=jdbc:h2:mem:audit-config;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE")
-            .withUserConfiguration(AuditConfig.class, PolicyConfig.class, ActionValidator.class);
+            .withUserConfiguration(AuditConfig.class, TrustConfig.class, PersistenceConfig.class, PolicyConfig.class,
+                    ActionValidator.class);
 
     @Test
     void flywayMigratesAndTheAuditLogWorks() {
@@ -37,6 +42,17 @@ class AuditConfigTest {
 
             assertThat(audit.verify().valid()).isTrue();
             assertThat(audit.verify().entries()).isEqualTo(1);
+        });
+    }
+
+    @Test
+    void trustRecordsAndIncidentsAreWired() {
+        context.run(ctx -> {
+            TrustService trust = ctx.getBean(TrustService.class);
+            trust.recordSuccess(ActionType.RESTART, null);
+
+            assertThat(trust.get(ActionType.RESTART).successes()).isEqualTo(1);
+            assertThat(ctx.getBean(IncidentRepository.class).findLatest(null, 10)).isEmpty();
         });
     }
 
