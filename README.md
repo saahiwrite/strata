@@ -118,7 +118,7 @@ curl http://localhost:9000/api/audit/verify
 | FR6: Map the score to L0 auto, L1 auto with undo, L2 approval, L3 human only | Not started | Phase 2 |
 | FR7: Support restart, scale out and rollback | Not started | Phase 2: restart. Phase 3: scale out and rollback |
 | FR8: For L2, show a preview, wait for approval, fall back to a safe action on timeout | Not started | Phase 3 |
-| FR9: Verify recovery; roll back and escalate if the service did not recover | Not started | Phase 2: recovery verifier. Phase 3: rollback and escalation |
+| FR9: Verify recovery; roll back and escalate if the service did not recover | In review | `PrometheusRecoveryVerifier`: all targets up and 5xx share ≤ 20% for 3 checks in a row, within a timeout (#10). Phase 3: rollback and escalation |
 | FR10: Promote or demote each action's level from its success record | Not started | Phase 2: trust records. Phase 3: earned autonomy |
 | FR11: Write every decision to a tamper-evident audit log | Not started | Phase 2: SHA-256 hash chain |
 | FR12: Show incidents, approvals and action levels on a dashboard | Not started | Phase 2: JSON API. Phase 3: Thymeleaf dashboard |
