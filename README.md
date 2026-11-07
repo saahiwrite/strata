@@ -114,8 +114,8 @@ curl http://localhost:9000/api/audit/verify
 | FR2: Alert on defined thresholds and open an incident | Not started | Phase 2: `ServiceDown` and `HighErrorRate` rules, webhook to the healer |
 | FR3: Diagnose with rules first; use the LLM when no rule matches | Not started | Phase 2: rule matcher. Phase 3: LLM (Ollama) |
 | FR4: Treat logs as untrusted and run only allow-listed actions | Not started | Phase 2: action validator. Phase 3: prompt-injection defense |
-| FR5: Score each action by blast radius, reversibility, environment, diagnosis confidence and past failures | Not started | Phase 2: risk scorer with YAML weights |
-| FR6: Map the score to L0 auto, L1 auto with undo, L2 approval, L3 human only | Not started | Phase 2 |
+| FR5: Score each action by blast radius, reversibility, environment, diagnosis confidence and past failures | In review | `policy.yaml` (weights, environments, per-action risk), `PolicyLoader`, `RiskScorer` (#8) |
+| FR6: Map the score to L0 auto, L1 auto with undo, L2 approval, L3 human only | In review | Thresholds in `policy.yaml`; an action can have a `minLevel` (rollback always needs approval) (#8) |
 | FR7: Support restart, scale out and rollback | Not started | Phase 2: restart. Phase 3: scale out and rollback |
 | FR8: For L2, show a preview, wait for approval, fall back to a safe action on timeout | Not started | Phase 3 |
 | FR9: Verify recovery; roll back and escalate if the service did not recover | Not started | Phase 2: recovery verifier. Phase 3: rollback and escalation |
@@ -151,4 +151,4 @@ curl http://localhost:9000/api/audit/verify
 | Nida Esen | _To be filled in_ |
 | Shivani Radhakrishnan | _To be filled in_ |
 | Madhuri Hegde | _To be filled in_ |
-| Saahithi Mallarapu | Created the public repository, folder scaffold, `.env.example`, `.gitignore`, labels, Phase 2 milestone and issues; wrote this README; parent `pom.xml`, the Phase 1 design doc in `docs/`, and the shared types between the healing stages (`model/`, `ActionExecutor`, `RecoveryVerifier`) with their unit tests |
+| Saahithi Mallarapu | Created the public repository, folder scaffold, `.env.example`, `.gitignore`, labels, Phase 2 milestone and issues; wrote this README; parent `pom.xml`, the Phase 1 design doc in `docs/`, and the shared types between the healing stages (`model/`, `ActionExecutor`, `RecoveryVerifier`) with their unit tests; the YAML risk policy (`policy.yaml`, `PolicyLoader`) and the `RiskScorer` (5 factors → score 0-100 → L0-L3) with `PolicyLoaderTest` and `RiskScorerTest` |
