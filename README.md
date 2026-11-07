@@ -108,7 +108,7 @@ curl http://localhost:9000/api/audit/verify
 
 | Functional Requirement (from Phase 1) | Status | Notes |
 |---|---|---|
-| FR1: Services expose metrics, JSON logs and failure switches (error, slow, crash, memory growth) | Not started | Phase 2: order-service and inventory-service with `/chaos/*` |
+| FR1: Services expose metrics, JSON logs and failure switches (error, slow, crash, memory growth) | Done | order-service (:8081) and inventory-service (:8082) behind Nginx (:8080), `/actuator/prometheus`, JSON logs on stdout, `/chaos/crash\|error\|slow\|memory\|reset`; 18-scenario catalogue and `scenarios/inject.sh` |
 | FR2: Alert on defined thresholds and open an incident | Not started | Phase 2: `ServiceDown` and `HighErrorRate` rules, webhook to the healer |
 | FR3: Diagnose with rules first; use the LLM when no rule matches | Not started | Phase 2: rule matcher. Phase 3: LLM (Ollama) |
 | FR4: Treat logs as untrusted and run only allow-listed actions | Not started | Phase 2: action validator. Phase 3: prompt-injection defense |
@@ -125,7 +125,7 @@ curl http://localhost:9000/api/audit/verify
 
 ## Testing So Far
 
-- No tests yet.
+- **Target services:** 23 unit and MockMvc tests in each of `order-service` and `inventory-service` (API, Prometheus metrics, JSON logging, every chaos switch and its input validation). Run with `mvn verify` inside each service folder.
 - Planned for Phase 2:
   - **Unit tests (JUnit 5):** `PolicyLoaderTest`, `RiskScorerTest`, `ActionValidatorTest`, `HashChainTest`, `TrustServiceTest`, `AlertParserTest`, `RuleMatcherTest`, `CooldownGuardTest`, `ChaosControllerTest`
   - **Integration test (Testcontainers):** `CrashRecoveryIT`
@@ -146,7 +146,7 @@ curl http://localhost:9000/api/audit/verify
 
 | Member | Contributions This Phase |
 |---|---|
-| Nida Esen | _To be filled in_ |
+| Nida Esen | Built `order-service` and `inventory-service` (Spring Boot 3, Actuator, Prometheus metrics, JSON logs via Logback); the failure switches (crash, error rate, slow responses, memory growth, reset) with their metrics; the Nginx entry point on :8080; the 18-scenario failure catalogue and `scenarios/inject.sh`; `ChaosControllerTest`, `ChaosStateTest`, `MemoryLeakTest`, `OrderControllerTest`, `InventoryControllerTest`, `JsonLoggingTest` |
 | Shivani Radhakrishnan | _To be filled in_ |
 | Madhuri Hegde | _To be filled in_ |
 | Saahithi Mallarapu | Created the public repository, folder scaffold, `.env.example`, `.gitignore`, labels, Phase 2 milestone and issues; wrote this README |
