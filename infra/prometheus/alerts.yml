@@ -1,0 +1,32 @@
+# Alert rules for the target services (FR2).
+# Every alert keeps the target's `service` and `container` labels, so the
+# healer knows which service is broken and which container to act on.
+groups:
+  - name: strata-target-services
+    rules:
+      # The /actuator/prometheus scrape failed: the service crashed or is unreachable.
+      - alert: ServiceDown
+        expr: up{job=~"order-service|inventory-service"} == 0
+        for: 10s
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service }} is down"
+          description: "Prometheus could not scrape {{ $labels.container }} ({{ $labels.instance }}) for 10s."
+
+      # More than 20% of requests return 5xx over the last minute.
+      # Actuator and /chaos/* calls are left out so health checks and
+      # failure switches don't count as traffic.
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum by (service, container) (rate(http_server_requests_seconds_count{job=~"order-service|inventory-service", status=~"5..", uri!~"/actuator.*|/chaos.*"}[1m]))
+          /
+            sum by (service, container) (rate(http_server_requests_seconds_count{job=~"order-service|inventory-service", uri!~"/actuator.*|/chaos.*"}[1m]))
+          ) > 0.2
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }} error rate is high"
+          description: "{{ $value | humanizePercentage }} of requests to {{ $labels.container }} returned 5xx over the last minute."
