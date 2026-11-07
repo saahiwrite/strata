@@ -29,6 +29,9 @@ class ChaosControllerTest {
     @MockBean
     private Terminator terminator;
 
+    @Autowired
+    private MemoryLeak memoryLeak;
+
     @AfterEach
     void resetSwitches() throws Exception {
         mvc.perform(post("/chaos/reset"));
@@ -103,12 +106,34 @@ class ChaosControllerTest {
     }
 
     @Test
+    void memorySwitchRetainsHeapUntilReset() throws Exception {
+        mvc.perform(post("/chaos/memory").param("mbPerSecond", "2").param("maxMb", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.memory.active").value(true))
+                .andExpect(jsonPath("$.memory.mbPerSecond").value(2));
+
+        memoryLeak.tick();
+        memoryLeak.tick();
+        memoryLeak.tick();
+
+        mvc.perform(get("/chaos")).andExpect(jsonPath("$.memory.leakedMb").value(3));
+        mvc.perform(get("/actuator/prometheus"))
+                .andExpect(content().string(containsString("chaos_memory_leaked_bytes")));
+
+        mvc.perform(post("/chaos/reset"))
+                .andExpect(jsonPath("$.memory.active").value(false))
+                .andExpect(jsonPath("$.memory.leakedMb").value(0));
+    }
+
+    @Test
     void rejectsInvalidValues() throws Exception {
         mvc.perform(post("/chaos/error").param("rate", "1.5")).andExpect(status().isBadRequest());
         mvc.perform(post("/chaos/error").param("rate", "-0.1")).andExpect(status().isBadRequest());
         mvc.perform(post("/chaos/error").param("rate", "abc")).andExpect(status().isBadRequest());
         mvc.perform(post("/chaos/slow").param("delayMs", "-1")).andExpect(status().isBadRequest());
         mvc.perform(post("/chaos/slow").param("delayMs", "600000")).andExpect(status().isBadRequest());
+        mvc.perform(post("/chaos/memory").param("mbPerSecond", "0")).andExpect(status().isBadRequest());
+        mvc.perform(post("/chaos/memory").param("maxMb", "-5")).andExpect(status().isBadRequest());
     }
 
     @Test

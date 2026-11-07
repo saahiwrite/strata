@@ -21,6 +21,8 @@ import java.util.Map;
  * POST /chaos/crash              exit the process with code 1
  * POST /chaos/error?rate=0.5     fail that fraction of requests with HTTP 500
  * POST /chaos/slow?delayMs=2000  add that much latency to every request
+ * POST /chaos/memory?mbPerSecond=10&maxMb=512
+ *                                retain that much more heap every second, up to maxMb
  * POST /chaos/reset              turn every switch off
  * </pre>
  */
@@ -31,10 +33,12 @@ public class ChaosController {
     private static final Logger log = LoggerFactory.getLogger(ChaosController.class);
 
     private final ChaosState state;
+    private final MemoryLeak memoryLeak;
     private final Terminator terminator;
 
-    public ChaosController(ChaosState state, Terminator terminator) {
+    public ChaosController(ChaosState state, MemoryLeak memoryLeak, Terminator terminator) {
         this.state = state;
+        this.memoryLeak = memoryLeak;
         this.terminator = terminator;
     }
 
@@ -43,6 +47,11 @@ public class ChaosController {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("errorRate", state.errorRate());
         body.put("latencyMs", state.latencyMs());
+        body.put("memory", Map.of(
+                "active", memoryLeak.active(),
+                "mbPerSecond", memoryLeak.mbPerSecond(),
+                "maxMb", memoryLeak.maxMb(),
+                "leakedMb", memoryLeak.leakedBytes() / (1024 * 1024)));
         return body;
     }
 
@@ -67,9 +76,18 @@ public class ChaosController {
         return status();
     }
 
+    @PostMapping("/memory")
+    public Map<String, Object> memory(@RequestParam(defaultValue = "10") int mbPerSecond,
+                                      @RequestParam(defaultValue = "512") int maxMb) {
+        memoryLeak.start(mbPerSecond, maxMb);
+        log.warn("Chaos switch set: memory growth mbPerSecond={} maxMb={}", mbPerSecond, maxMb);
+        return status();
+    }
+
     @PostMapping("/reset")
     public Map<String, Object> reset() {
         state.reset();
+        memoryLeak.stop();
         log.info("Chaos switches reset");
         return status();
     }
