@@ -1,0 +1,12 @@
+server:
+  port: ${HEALER_PORT:9000}
+
+spring:
+  application:
+    name: strata-healer
+
+strata:
+  loki:
+    url: ${LOKI_URL:http://loki:3100}
+  cooldown:
+    seconds: 60
