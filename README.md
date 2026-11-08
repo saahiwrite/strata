@@ -112,7 +112,7 @@ curl http://localhost:9000/api/audit/verify
 
 | Functional Requirement (from Phase 1) | Status | Notes |
 |---|---|---|
-| FR1: Services expose metrics, JSON logs and failure switches (error, slow, crash, memory growth) | Done | oorder-service and inventory-service (both on :8080 in their containers) behind Nginx (:8080 on the host), `/actuator/prometheus`, JSON logs on stdout, `/chaos/crash\|error\|slow\|memory\|reset`; 18-scenario catalogue and `scenarios/inject.sh` (#27, merged) |
+| FR1: Services expose metrics, JSON logs and failure switches (error, slow, crash, memory growth) | Done | order-service and inventory-service (both on :8080 in their containers) behind Nginx (:8080 on the host), `/actuator/prometheus`, JSON logs on stdout, `/chaos/crash\|error\|slow\|memory\|reset`; 18-scenario catalogue and `scenarios/inject.sh` (#27, merged) |
 | FR2: Alert on defined thresholds and open an incident | In review | Compose with PostgreSQL and Prometheus (#23); `ServiceDown` and `HighErrorRate` alert rules with promtool tests and the Alertmanager webhook (#24); healer skeleton and `POST /api/alerts` (#19); `AlertParser` and `IncidentService` (#28) |
 | FR3: Diagnose with rules first; use the LLM when no rule matches | In review | Phase 2: `RuleMatcher` with `rules.yaml` and `LokiLogClient` (#29); Loki and Promtail (#25). Phase 3: LLM (Ollama) |
 | FR4: Treat logs as untrusted and run only allow-listed actions | In review | `allowList` in `policy.yaml` (actions and targets) and `ActionValidator`, which also rejects targets that aren't plain container names (#12). Phase 3: prompt-injection defense |

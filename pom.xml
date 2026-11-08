@@ -26,8 +26,9 @@
     <description>STRATA: Self-healing with Trust and Risk-Adaptive Autonomy</description>
 
     <modules>
-        <!-- target-services/order-service and target-services/inventory-service are added here when they land -->
         <module>strata-healer</module>
+        <module>target-services/order-service</module>
+        <module>target-services/inventory-service</module>
     </modules>
 
     <properties>
