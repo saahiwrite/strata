@@ -104,6 +104,8 @@ curl http://localhost:9000/api/audit/verify
 |---|---|
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Database for incidents, decisions, trust records and the audit log |
 | `HEALER_PORT` | Port of the STRATA healer (default 9000) |
+| `POSTGRES_PORT`, `PROMETHEUS_PORT`, `ALERTMANAGER_PORT`, `LOKI_PORT`, `GRAFANA_PORT` | Optional host ports (5432, 9090, 9093, 3100, 3000). Change only if a port is taken |
+| `GRAFANA_ADMIN_PASSWORD` | Grafana admin password (default `admin`). Dashboards can be viewed without logging in |
 | `DOCKER_HOST` | Only if docker-java can't find the Docker socket (some macOS/Windows setups) |
 
 ## Progress So Far

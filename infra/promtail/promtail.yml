@@ -1,0 +1,40 @@
+# Promtail reads the logs of every container in the strata Compose project
+# through the Docker socket and ships them to Loki.
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: warn
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: strata-containers
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          - name: label
+            values: ["com.docker.compose.project=strata"]
+    relabel_configs:
+      # container="strata-order-service-1", the same value the Prometheus alerts carry
+      - source_labels: [__meta_docker_container_name]
+        regex: /(.*)
+        target_label: container
+      # service="order-service", the Compose service name
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        target_label: service
+    pipeline_stages:
+      # The target services log JSON (Logback). Pull out the level so logs can be
+      # filtered by {level="ERROR"}. Lines that aren't JSON pass through unchanged.
+      - match:
+          selector: '{service=~"order-service|inventory-service|strata-healer"}'
+          stages:
+            - json:
+                expressions:
+                  level: level
+            - labels:
+                level:
