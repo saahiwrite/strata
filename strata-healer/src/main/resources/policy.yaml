@@ -1,0 +1,59 @@
+# STRATA risk policy (FR5, FR6).
+#
+# The risk scorer rates each proposed action on five factors. Every factor is a
+# value from 0.0 (safe) to 1.0 (risky), multiplied by its weight; the weights add
+# up to 100, so the total score is 0-100. The score then picks the autonomy level.
+# Changing how cautious STRATA is needs only an edit here (no code change).
+
+# Which environment this healer runs in (a key of `environments` below).
+environment: local
+
+# How much each factor counts. Must add up to exactly 100.
+weights:
+  blastRadius: 25          # how much of the system the action touches
+  reversibility: 25        # how hard the action is to undo
+  environment: 15          # how sensitive the environment is
+  diagnosisConfidence: 20  # 1 - the diagnosis' confidence
+  pastFailures: 15         # share of this action's recent runs that failed
+
+# Score ranges for each level: below l1From is L0 (auto), then L1 (auto with undo),
+# L2 (needs approval) and from l3From up L3 (human only).
+thresholds:
+  l1From: 20
+  l2From: 40
+  l3From: 70
+
+# Environment risk, 0.0-1.0. An environment that isn't listed counts as 1.0.
+environments:
+  local: 0.0
+  staging: 0.5
+  production: 1.0
+
+# Per-action risk, 0.0-1.0. minLevel (optional) is the least cautious level the
+# action may ever get, whatever its score. An action that isn't listed always
+# gets L3 (human only).
+actions:
+  RESTART:
+    blastRadius: 0.2       # one container
+    reversibility: 0.1     # a restart is easy to repeat or undo
+  SCALE_OUT:
+    blastRadius: 0.3       # adds one instance
+    reversibility: 0.2     # the new instance can be stopped again
+  ROLLBACK:
+    blastRadius: 1.0       # every instance of the service
+    reversibility: 0.8     # goes back to an older image; data written since may not fit it
+    minLevel: L2_APPROVAL  # secondary use case: an engineer approves every rollback
+
+# The only actions STRATA may run, and the only containers/services it may run them
+# on (FR4). Anything else a diagnosis proposes is rejected before it is scored.
+# A target is an exact name, or a name ending in * (matches every name starting with
+# the part before it). Scale out and rollback join `actions` in Phase 3, once they
+# have executors.
+allowList:
+  actions:
+    - RESTART
+  targets:
+    - order-service
+    - inventory-service
+    - strata-order-service-*
+    - strata-inventory-service-*
