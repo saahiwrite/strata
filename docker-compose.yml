@@ -6,6 +6,48 @@
 name: strata
 
 services:
+  # Target services. Build the jars first (mvn clean package -DskipTests).
+  # restart: "no" on purpose: when a service crashes, STRATA restarts it, not Docker.
+  order-service:
+    build: ./target-services/order-service
+    restart: "no"
+    ports:
+      - "8081:8081"
+
+  inventory-service:
+    build: ./target-services/inventory-service
+    restart: "no"
+    ports:
+      - "8082:8082"
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - order-service
+      - inventory-service
+
+  # The healer. It restarts containers through the Docker socket.
+  strata-healer:
+    build: ./strata-healer
+    ports:
+      - "${HEALER_PORT:-9000}:9000"
+    environment:
+      HEALER_PORT: 9000
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-strata}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-strata}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (copy .env.example)}
+      STRATA_PROMETHEUS_URL: http://prometheus:9090
+      LOKI_URL: http://loki:3100
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   postgres:
     image: postgres:16-alpine
     environment:
