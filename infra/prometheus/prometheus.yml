@@ -24,7 +24,7 @@ scrape_configs:
   - job_name: order-service
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ["order-service:8080"]
+      - targets: ["order-service:8081"]
         labels:
           service: order-service
           container: strata-order-service-1
@@ -32,7 +32,7 @@ scrape_configs:
   - job_name: inventory-service
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ["inventory-service:8080"]
+      - targets: ["inventory-service:8082"]
         labels:
           service: inventory-service
           container: strata-inventory-service-1

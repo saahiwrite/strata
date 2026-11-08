@@ -9,9 +9,9 @@ tests:
   # order-service stops answering scrapes at 30s; inventory-service stays up.
   - interval: 5s
     input_series:
-      - series: 'up{job="order-service", instance="order-service:8080", service="order-service", container="strata-order-service-1"}'
+      - series: 'up{job="order-service", instance="order-service:8081", service="order-service", container="strata-order-service-1"}'
         values: '1 1 1 1 1 1 0 0 0 0 0 0 0'
-      - series: 'up{job="inventory-service", instance="inventory-service:8080", service="inventory-service", container="strata-inventory-service-1"}'
+      - series: 'up{job="inventory-service", instance="inventory-service:8082", service="inventory-service", container="strata-inventory-service-1"}'
         values: '1 1 1 1 1 1 1 1 1 1 1 1 1'
     alert_rule_test:
       # Down for 5s: still pending, not firing.
@@ -25,12 +25,12 @@ tests:
           - exp_labels:
               severity: critical
               job: order-service
-              instance: order-service:8080
+              instance: order-service:8081
               service: order-service
               container: strata-order-service-1
             exp_annotations:
               summary: "order-service is down"
-              description: "Prometheus could not scrape strata-order-service-1 (order-service:8080) for 10s."
+              description: "Prometheus could not scrape strata-order-service-1 (order-service:8081) for 10s."
 
   # Prometheus itself going down is not a target-service alert.
   - interval: 5s
