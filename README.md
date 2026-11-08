@@ -100,7 +100,7 @@ curl http://localhost:9000/api/audit/verify
 
 In our runs the healer restarts order-service about 15-20 s after the crash, and the incident shows `RESOLVED` about 10 s later.
 
-On macOS with Colima instead of Docker Desktop, `mvn verify` needs `DOCKER_HOST=unix://$HOME/.colima/default/docker.sock` and `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock` for the integration test.
+On macOS with Colima instead of Docker Desktop, clone the repo somewhere under your home folder (Colima only shares your home folder with containers), and `mvn verify` needs `DOCKER_HOST=unix://$HOME/.colima/default/docker.sock` and `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock` for the integration test.
 
 **Environment variables** (`.env.example`):
 
