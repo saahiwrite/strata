@@ -1,0 +1,14 @@
+# Rules are checked top to bottom, the first match wins.
+# logContains is optional: the rule only matches if a recent log line has one of these texts.
+rules:
+  - id: out-of-memory-restart
+    alertName: ServiceDown
+    logContains:
+      - OutOfMemoryError
+    action: RESTART
+    confidence: 0.95
+
+  - id: service-down-restart
+    alertName: ServiceDown
+    action: RESTART
+    confidence: 0.9
