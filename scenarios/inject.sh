@@ -17,7 +17,7 @@
 #
 # By default requests go through Nginx (http://localhost:8080). Override with:
 #   STRATA_GATEWAY=http://host:8080          base URL of the Nginx entry point
-#   ORDER_SERVICE_URL=http://localhost:8081  talk to order-service directly
+#   ORDER_SERVICE_URL=http://localhost:8081  talk to order-service directly (if its port is published)
 #   INVENTORY_SERVICE_URL=...                talk to inventory-service directly
 
 set -euo pipefail
