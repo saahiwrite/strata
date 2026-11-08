@@ -34,8 +34,25 @@ services:
     volumes:
       - ./infra/prometheus:/etc/prometheus:ro
       - prometheus-data:/prometheus
+    depends_on:
+      - alertmanager
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    ports:
+      - "${ALERTMANAGER_PORT:-9093}:9093"
+    volumes:
+      - ./infra/alertmanager:/etc/alertmanager:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9093/-/ready"]
       interval: 5s
       timeout: 3s
       retries: 10

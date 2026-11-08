@@ -1,0 +1,17 @@
+# Alertmanager sends every alert to the STRATA healer's webhook (POST /api/alerts).
+# Timings are short so a crash reaches the healer within seconds.
+route:
+  receiver: strata-healer
+  group_by: [alertname, service]
+  group_wait: 5s
+  group_interval: 30s
+  # Re-send a still-firing alert after 5m, so a fix that didn't work gets another look.
+  repeat_interval: 5m
+
+receivers:
+  - name: strata-healer
+    webhook_configs:
+      # strata-healer is the healer's Compose service name; 9000 is HEALER_PORT inside the network.
+      - url: http://strata-healer:9000/api/alerts
+        send_resolved: true
+        max_alerts: 0
