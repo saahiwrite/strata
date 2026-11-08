@@ -6,30 +6,6 @@
 name: strata
 
 services:
-  # Target services. Build the jars first (mvn clean package -DskipTests).
-  # restart: "no" on purpose: when a service crashes, STRATA restarts it, not Docker.
-  order-service:
-    build: ./target-services/order-service
-    restart: "no"
-    ports:
-      - "8081:8081"
-
-  inventory-service:
-    build: ./target-services/inventory-service
-    restart: "no"
-    ports:
-      - "8082:8082"
-
-  nginx:
-    image: nginx:1.27-alpine
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - order-service
-      - inventory-service
-
   # The healer. It restarts containers through the Docker socket.
   strata-healer:
     build: ./strata-healer
@@ -150,6 +126,36 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+
+  # Target services that STRATA heals. Build the jars first (mvn clean package -DskipTests).
+  # No restart policy on purpose: when a service crashes it stays down until the healer
+  # restarts it. Their ports are not published; reach them through Nginx on :8080.
+  order-service:
+    build: ./target-services/order-service
+    expose:
+      - "8080"
+
+  inventory-service:
+    build: ./target-services/inventory-service
+    expose:
+      - "8080"
+
+  # Single entry point: /orders, /inventory, and /order-service/* or /inventory-service/*
+  # for the /chaos switches and /actuator (used by scenarios/inject.sh).
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "${NGINX_PORT:-8080}:8080"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - order-service
+      - inventory-service
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/nginx-health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
 volumes:
   postgres-data:
