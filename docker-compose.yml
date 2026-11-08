@@ -42,6 +42,8 @@ services:
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (copy .env.example)}
       STRATA_PROMETHEUS_URL: http://prometheus:9090
       LOKI_URL: http://loki:3100
+      # A restarted Spring Boot service needs ~20-30s before it passes 3 checks in a row
+      STRATA_VERIFY_TIMEOUT_SECONDS: 90
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
