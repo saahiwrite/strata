@@ -6,6 +6,26 @@
 name: strata
 
 services:
+  # The healer. It restarts containers through the Docker socket.
+  strata-healer:
+    build: ./strata-healer
+    ports:
+      - "${HEALER_PORT:-9000}:9000"
+    environment:
+      HEALER_PORT: 9000
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-strata}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-strata}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (copy .env.example)}
+      STRATA_PROMETHEUS_URL: http://prometheus:9090
+      LOKI_URL: http://loki:3100
+      # A restarted Spring Boot service needs ~20-30s before it passes 3 checks in a row
+      STRATA_VERIFY_TIMEOUT_SECONDS: 90
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   postgres:
     image: postgres:16-alpine
     environment:
@@ -132,7 +152,7 @@ services:
       - order-service
       - inventory-service
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/nginx-health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/nginx-health"]
       interval: 5s
       timeout: 3s
       retries: 10

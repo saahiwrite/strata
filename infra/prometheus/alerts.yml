@@ -5,8 +5,10 @@ groups:
   - name: strata-target-services
     rules:
       # The /actuator/prometheus scrape failed: the service crashed or is unreachable.
+      # Only for a service that was up in the last 10 minutes, so a service that is
+      # still starting (Spring Boot takes ~20s) doesn't get restarted by mistake.
       - alert: ServiceDown
-        expr: up{job=~"order-service|inventory-service"} == 0
+        expr: up{job=~"order-service|inventory-service"} == 0 and max_over_time(up{job=~"order-service|inventory-service"}[10m]) == 1
         for: 10s
         labels:
           severity: critical
