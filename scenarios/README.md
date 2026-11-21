@@ -6,6 +6,8 @@ S01 to S12 can be injected today with the Phase 2 switches. S13 to S18 need Phas
 
 > The "Expected level" column is what we expect the risk scorer to produce, based on the Phase 1 design. The final values come from `policy.yaml`, so this column will be updated once the policy is tuned.
 
+Alert thresholds (from `infra/prometheus/alerts.yml`): `ServiceDown` after 10 s down, `HighErrorRate` above 20% 5xx for 30 s, `HighLatency` p95 above 1 s for 30 s, `HighMemory` heap above 50% for 15 s.
+
 ## Catalogue
 
 | ID | Scenario | Category | Injection | Expected signal | Expected STRATA response | Expected level | Phase |
