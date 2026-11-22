@@ -32,6 +32,7 @@ import edu.neu.strata.healer.persistence.DecisionStore;
 import edu.neu.strata.healer.policy.RiskScorer;
 import edu.neu.strata.healer.trust.TrustService;
 import edu.neu.strata.healer.validation.ActionValidator;
+import edu.neu.strata.healer.validation.LogScreen;
 import edu.neu.strata.healer.validation.ValidationResult;
 import edu.neu.strata.healer.verification.RecoveryVerifier;
 
@@ -46,6 +47,7 @@ public class HealingOrchestrator {
 
     private final IncidentService incidents;
     private final LokiLogClient logClient;
+    private final LogScreen logScreen;
     private final Diagnoser diagnoser;
     private final ActionValidator validator;
     private final RiskScorer riskScorer;
@@ -59,22 +61,25 @@ public class HealingOrchestrator {
     private final Executor background;
 
     @Autowired
-    public HealingOrchestrator(IncidentService incidents, LokiLogClient logClient, Diagnoser diagnoser,
+    public HealingOrchestrator(IncidentService incidents, LokiLogClient logClient, LogScreen logScreen,
+                               Diagnoser diagnoser,
                                ActionValidator validator, RiskScorer riskScorer, TrustService trust,
                                CooldownGuard cooldown, ActionExecutor executor, RecoveryVerifier verifier,
                                AuditLogService audit, DecisionStore decisions,
                                @Value("${strata.verify.timeout-seconds:30}") long verifySeconds) {
-        this(incidents, logClient, diagnoser, validator, riskScorer, trust, cooldown, executor, verifier,
+        this(incidents, logClient, logScreen, diagnoser, validator, riskScorer, trust, cooldown, executor, verifier,
                 audit, decisions, Duration.ofSeconds(verifySeconds), Executors.newVirtualThreadPerTaskExecutor());
     }
 
-    HealingOrchestrator(IncidentService incidents, LokiLogClient logClient, Diagnoser diagnoser,
+    HealingOrchestrator(IncidentService incidents, LokiLogClient logClient, LogScreen logScreen,
+                        Diagnoser diagnoser,
                         ActionValidator validator, RiskScorer riskScorer, TrustService trust,
                         CooldownGuard cooldown, ActionExecutor executor, RecoveryVerifier verifier,
                         AuditLogService audit, DecisionStore decisions, Duration verifyTimeout,
                         Executor background) {
         this.incidents = incidents;
         this.logClient = logClient;
+        this.logScreen = logScreen;
         this.diagnoser = diagnoser;
         this.validator = validator;
         this.riskScorer = riskScorer;
@@ -116,12 +121,27 @@ public class HealingOrchestrator {
                 "container", String.valueOf(alert.container())));
 
         List<String> logs = logClient.recentLogs(logSource(alert), LOG_WINDOW, LOG_LIMIT);
+
+        // Logs are untrusted (FR4): lines that try to instruct the healer are withheld from every
+        // diagnoser, and the LLM isn't asked at all for this incident; only the rules may answer.
+        LogScreen.Result screened = logScreen.screen(logs);
+        Diagnoser diagnosing = diagnoser;
+        if (screened.suspicious()) {
+            audit.append(AuditEventType.INJECTION_SUSPECTED, id, Map.of(
+                    "linesWithheld", screened.findings().size(),
+                    "signals", List.copyOf(screened.signals()),
+                    "excerpt", screened.findings().getFirst().excerpt()));
+            diagnosing = diagnoser.withoutLlm();
+        }
+
         long started = System.nanoTime();
-        Optional<Diagnosis> found = diagnoser.diagnose(alert, logs);
+        Optional<Diagnosis> found = diagnosing.diagnose(alert, screened.clean());
         long diagnosisMs = (System.nanoTime() - started) / 1_000_000;  // reported for LLM timing (Phase 1 NFR)
         if (found.isEmpty()) {
             audit.append(AuditEventType.DIAGNOSIS, id, Map.of("result", "no diagnosis", "durationMs", diagnosisMs));
-            closeAsEscalated(incident, "no rule matched and no LLM diagnosis");
+            closeAsEscalated(incident, screened.suspicious()
+                    ? "possible prompt injection in the logs; no rule matched, so the LLM was not asked"
+                    : "no rule matched and no LLM diagnosis");
             return;
         }
         Diagnosis diagnosis = found.get();

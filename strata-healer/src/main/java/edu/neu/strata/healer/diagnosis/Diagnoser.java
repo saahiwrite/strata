@@ -19,4 +19,12 @@ public interface Diagnoser {
      * @return the proposed action, or empty when this diagnoser has no answer
      */
     Optional<Diagnosis> diagnose(Alert alert, List<String> logLines);
+
+    /**
+     * The same diagnoser without any LLM, used when the logs look tampered with: text that tried to
+     * instruct the healer is never put in front of a model. Rule-based diagnosers return themselves.
+     */
+    default Diagnoser withoutLlm() {
+        return this;
+    }
 }

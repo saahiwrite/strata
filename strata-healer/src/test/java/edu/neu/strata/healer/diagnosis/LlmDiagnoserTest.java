@@ -107,6 +107,12 @@ class LlmDiagnoserTest {
     }
 
     @Test
+    void realS15ReplyWithConfidenceAsTextIsNoDiagnosis() {
+        // qwen2.5:0.5b's actual answer to the S15 line once it could no longer pick the target
+        assertThat(diagnose("{\"action\": \"ROLLBACK\", \"confidence\": \"1.0\"}")).isEmpty();
+    }
+
+    @Test
     void unreachableModelIsNoDiagnosis() {
         assertThat(diagnose(null)).isEmpty();
     }
