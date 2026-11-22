@@ -12,14 +12,14 @@ When a backend service crashes, slows down or gets overloaded, an on-call engine
 
 | Member | GitHub Username | Role |
 |---|---|---|
-| Nida Esen | [@NidaEsenn](https://github.com/NidaEsenn) | Target backend: order and inventory services, failure switches, metrics, JSON logs, Nginx, failure scenarios |
-| Shivani Radhakrishnan | [@Shivani-Radhakrishnan](https://github.com/Shivani-Radhakrishnan) | Observability and infrastructure: Docker Compose, Prometheus, Alertmanager, Loki, Grafana, recovery verification, CI |
-| Madhuri Hegde | [@madhurihegde2](https://github.com/madhurihegde2) | Healer pipeline: alert webhook, detection, rule-based diagnosis, Docker action execution, orchestration |
-| Saahithi Mallarapu | [@saahiwrite](https://github.com/saahiwrite) | Risk, policy, trust and audit: risk scorer, YAML policy, action validator, trust records, hash-chained audit log, persistence |
+| Nida Esen | [@NidaEsenn](https://github.com/NidaEsenn) | Target backend and dashboard: order and inventory services, failure switches, failure scenarios, bad-deploy and traffic-spike injection, Thymeleaf dashboard |
+| Shivani Radhakrishnan | [@Shivani-Radhakrishnan](https://github.com/Shivani-Radhakrishnan) | Observability and infrastructure: Docker Compose, Prometheus, Alertmanager, Loki, Grafana, recovery verification, CI, benchmark harness |
+| Madhuri Hegde | [@madhurihegde2](https://github.com/madhurihegde2) | Healer pipeline: alert webhook, detection, rule-based diagnosis, Docker actions (restart, scale out, rollback), approval workflow, orchestration |
+| Saahithi Mallarapu | [@saahiwrite](https://github.com/saahiwrite) | Risk, policy, trust and audit: risk scorer, YAML policy, action validator, trust and earned autonomy, LLM diagnosis, prompt-injection defense, hash-chained audit log, persistence |
 
 ## Repository Structure
 
-The folders follow the components in our Phase 1 system design.
+The folders follow the components in our Phase 1 system design. Packages marked *(Phase 3)* are being added in this phase.
 
 ```
 strata/
@@ -29,35 +29,37 @@ strata/
   strata-healer/          The STRATA healer (Spring Boot, Java 21)
     src/main/java/edu/neu/strata/healer/
       model/              Shared types between the stages: Alert, Diagnosis, ActionType, AutonomyLevel, RiskAssessment, ExecutionResult
-      api/                REST endpoints: Alertmanager webhook, incidents and audit API
-      detection/          Turns incoming alerts into incidents
-      diagnosis/          Rule matcher (rules.yaml) and Loki log client; LLM diagnosis later
+      api/                REST endpoints: Alertmanager webhook, incidents, audit and trust API; approvals (Phase 3)
+      detection/          Turns incoming alerts into incidents (AlertParser, IncidentService)
+      diagnosis/          Rule matcher (rules.yaml) and Loki log client; LLM diagnosis (Phase 3)
       validation/         Action allow-list; rejects unknown actions and targets
       policy/             YAML policy loader and risk scorer (score 0-100 → L0-L3)
-      execution/          Docker actions (restart, later scale out and rollback) and cooldown guard
+      execution/          Docker actions (restart; scale out and rollback in Phase 3) and cooldown guard
       verification/       Prometheus client and recovery verifier
-      trust/              Per-action success and failure record (earned autonomy)
+      trust/              Per-action success and failure record; earned autonomy (Phase 3)
       audit/              Tamper-evident, hash-chained audit log
-      orchestration/      Healing loop: detect → diagnose → validate → score → execute → verify → audit
-      persistence/        Database entities and repositories
-    src/main/resources/db/migration/   Flyway migrations (incidents, decisions, audit_log, action_trust)
-    src/test/java/edu/neu/strata/healer/   Unit tests (JUnit 5) and integration tests (Testcontainers)
+      orchestration/      Healing loop: detect → diagnose → validate → score → execute → verify → audit → trust
+      persistence/        Database access: read repositories and write stores (Spring JDBC)
+      dashboard/          Thymeleaf dashboard (Phase 3)
+    src/main/resources/
+      policy.yaml         Risk weights, level thresholds, environments, per-action risk and the allow-list
+      rules.yaml          Diagnosis rules (alert + optional log text → action and confidence)
+      db/migration/       Flyway migrations (incidents, decisions, audit_log, action_trust)
+    src/test/java/edu/neu/strata/healer/   Unit tests (JUnit 5) and integration tests (it/, Testcontainers)
   infra/
     nginx/                Load balancer config
-    prometheus/           Scrape config and alert rules
+    prometheus/           Scrape config, alert rules and promtool tests
     alertmanager/         Routes alerts to the healer's webhook
     loki/  promtail/      Log storage and log shipping
-    grafana/provisioning/ Data sources and dashboards (error rate, latency, memory)
-  scenarios/              Catalogue of the 15-20 injected failures and the inject.sh script
-  docs/                   Phase 1 design document (phase1-design.md) and other project docs
-  .github/workflows/      CI (mvn verify) (planned, not in the repository yet)
+    grafana/              Data sources and the STRATA dashboard (up/down, error rate, latency, memory, logs)
+  scenarios/              Catalogue of the 18 injected failures (README.md) and inject.sh
+  docs/                   Phase 1 design document (phase1-design.md); benchmark results (Phase 3)
+  .github/workflows/      CI: mvn verify (unit + integration tests), promtool, amtool, compose config
   .env.example            Example environment variables (copy to .env)
   pom.xml                 Parent pom (Spring Boot 3.3, Java 21); lists every Maven module
 ```
 
 ## Setup and Run
-
-> Phase 2 was built Nov 3-7, 2026. Everything below works on `main`.
 
 **Prerequisites:**
 - Java 21
@@ -65,7 +67,7 @@ strata/
 - Docker Desktop (or Docker Engine) with Docker Compose v2
 - Git
 
-No accounts or API keys are needed. The LLM diagnosis planned for Phase 3 will use a local Ollama model.
+No accounts or API keys are needed. The LLM diagnosis (Phase 3) uses a local Ollama model that runs in Docker Compose.
 
 ```bash
 # Clone
@@ -82,11 +84,11 @@ mvn clean package -DskipTests
 # Loki, Promtail, Grafana and the STRATA healer
 docker compose up --build
 
-# Run tests (unit tests and CrashRecoveryIT; Docker must be running)
+# Run all tests: unit tests and the Testcontainers integration tests (Docker must be running)
 mvn verify
 ```
 
-**Trying the primary use case:**
+**Primary use case (crash → automatic restart):**
 
 ```bash
 # Crash order-service through its failure switch
@@ -100,7 +102,11 @@ curl http://localhost:9000/api/audit/verify
 
 On a fresh clone the healer restarted order-service about 25 s after the crash, and the incident showed `RESOLVED` about 20 s after that.
 
-On macOS with Colima instead of Docker Desktop, clone the repo somewhere under your home folder (Colima only shares your home folder with containers), and `mvn verify` needs `DOCKER_HOST=unix://$HOME/.colima/default/docker.sock` and `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock` for the integration test.
+**Secondary use case (bad deployment → rollback with approval):** being built in Phase 3 (#41, #49, #50, #44). The commands will be `./scenarios/inject.sh scenario S14`, then approving the pending rollback on `http://localhost:9000/dashboard`.
+
+**Other places to look:** Grafana on `http://localhost:3000` (STRATA dashboard, no login needed), Prometheus on `:9090`, Alertmanager on `:9093`. `./scenarios/inject.sh list` prints every scenario.
+
+On macOS with Colima instead of Docker Desktop, clone the repo somewhere under your home folder (Colima only shares your home folder with containers), and `mvn verify` needs `DOCKER_HOST=unix://$HOME/.colima/default/docker.sock` and `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock` for the integration tests.
 
 **Environment variables** (`.env.example`):
 
@@ -112,50 +118,100 @@ On macOS with Colima instead of Docker Desktop, clone the repo somewhere under y
 | `GRAFANA_ADMIN_PASSWORD` | Grafana admin password (default `admin`). Dashboards can be viewed without logging in |
 | `DOCKER_HOST` | Only if docker-java can't find the Docker socket (some macOS/Windows setups) |
 
-## Progress So Far
+## Feature Status
 
-| Functional Requirement (from Phase 1) | Status | Notes |
+Status as of the start of Phase 3. The issue numbers are the Phase 3 work that completes each requirement ([Phase 3 milestone](https://github.com/saahiwrite/strata/milestone/2)).
+
+| Functional Requirement (from Phase 1) | Status | Where to Find It |
 |---|---|---|
-| FR1: Services expose metrics, JSON logs and failure switches (error, slow, crash, memory growth) | Done | order-service and inventory-service (both on :8080 in their containers) behind Nginx (:8080 on the host), `/actuator/prometheus`, JSON logs on stdout, `/chaos/crash\|error\|slow\|memory\|reset`; 18-scenario catalogue and `scenarios/inject.sh` (#27, merged) |
-| FR2: Alert on defined thresholds and open an incident | Done | Compose with PostgreSQL and Prometheus (#23); `ServiceDown` and `HighErrorRate` alert rules with promtool tests and the Alertmanager webhook (#24); healer skeleton and `POST /api/alerts` (#19); `AlertParser` and `IncidentService` (#28) |
-| FR3: Diagnose with rules first; use the LLM when no rule matches | Partly done | Phase 2: `RuleMatcher` with `rules.yaml` and `LokiLogClient` (#29); Loki and Promtail (#25). Phase 3: LLM (Ollama) |
-| FR4: Treat logs as untrusted and run only allow-listed actions | Partly done | `allowList` in `policy.yaml` (actions and targets) and `ActionValidator`, which also rejects targets that aren't plain container names (#12). Phase 3: prompt-injection defense |
-| FR5: Score each action by blast radius, reversibility, environment, diagnosis confidence and past failures | Done | `policy.yaml` (weights, environments, per-action risk), `PolicyLoader`, `RiskScorer` (#8) |
-| FR6: Map the score to L0 auto, L1 auto with undo, L2 approval, L3 human only | Done | Thresholds in `policy.yaml`; an action can have a `minLevel` (rollback always needs approval) (#8) |
-| FR7: Support restart, scale out and rollback | Partly done | Phase 2: restart through docker-java (`DockerActionExecutor`) and a 60 s `CooldownGuard` (#29). Phase 3: scale out and rollback |
-| FR8: For L2, show a preview, wait for approval, fall back to a safe action on timeout | Not started | Phase 3 |
-| FR9: Verify recovery; roll back and escalate if the service did not recover | Partly done | Phase 2: `PrometheusClient` and `PrometheusRecoveryVerifier` (#26), Grafana dashboards (#25). Phase 3: rollback and escalation |
-| FR10: Promote or demote each action's level from its success record | Partly done | `TrustService` keeps each action's successes and failures (`action_trust`), writes each change to the audit log and gives the risk scorer its past-failures input; `GET /api/trust` (#14). Phase 3: earned autonomy |
-| FR11: Write every decision to a tamper-evident audit log | Done | SHA-256 hash chain (`HashChain`), `AuditLogService` (append, verify) and the Flyway schema for incidents, decisions, trust records and the audit log (#12). The orchestrator writes every stage of an incident to it (#33). `GET /api/audit` and `GET /api/audit/verify` (#14) |
-| FR12: Show incidents, approvals and action levels on a dashboard | Partly done | Phase 2: JSON API: `GET /api/incidents` (newest first, `?status=`), `GET /api/incidents/{id}` (with its decisions and audit entries), `GET /api/trust` (#14). Phase 3: Thymeleaf dashboard |
+| FR1: Services expose metrics, JSON logs and failure switches (error, slow, crash, memory growth) | Complete | `target-services/*/chaos/` (`ChaosController`, `ChaosFilter`, `MemoryLeak`, `Terminator`), `logback-spring.xml`, `/actuator/prometheus`; Phase 3 adds a log switch (#42) and a broken release (#41) for S14-S17 |
+| FR2: Alert on defined thresholds and open an incident | Complete | `infra/prometheus/alerts.yml` (`ServiceDown`, `HighErrorRate`), `infra/alertmanager/alertmanager.yml`, `api/AlertWebhookController`, `detection/AlertParser`, `detection/IncidentService`; `HighLatency`/`HighMemory` (#39) and Nginx down (#45) in Phase 3 |
+| FR3: Diagnose with rules first; use the LLM when no rule matches | Partial | Rules: `diagnosis/RuleMatcher`, `rules.yaml`, `diagnosis/LokiLogClient`. LLM with Ollama: #52 |
+| FR4: Treat logs as untrusted and run only allow-listed actions | Partial | `validation/ActionValidator`, `policy/AllowList`, `allowList` in `policy.yaml`. Prompt-injection defense: #53 |
+| FR5: Score each action by blast radius, reversibility, environment, diagnosis confidence and past failures | Complete | `policy/RiskScorer`, `policy/PolicyLoader`, `policy.yaml` |
+| FR6: Map the score to L0 auto, L1 auto with undo, L2 approval, L3 human only | Complete | `policy/RiskScorer`, `thresholds` and `minLevel` in `policy.yaml`, `model/AutonomyLevel`, `orchestration/HealingOrchestrator` |
+| FR7: Support restart, scale out and rollback | Partial | Restart: `execution/DockerActionExecutor`, `execution/CooldownGuard`. Scale out, rollback and canary: #49 |
+| FR8: For L2, show a preview, wait for approval, fall back to a safe action on timeout | Partial | L2 decisions are saved as `AWAITING_APPROVAL` and audited (`HealingOrchestrator`). Approve/deny API and timeout fallback: #50; dashboard buttons: #44 |
+| FR9: Verify recovery; roll back and escalate if the service did not recover | Partial | `verification/PrometheusRecoveryVerifier`, `verification/PrometheusClient`; a failed verify escalates today. Undo before escalating: #51 |
+| FR10: Promote or demote each action's level from its success record | Partial | `trust/TrustService`, `trust/TrustRecord`, `GET /api/trust` (successes and failures feed the past-failures factor). Earned autonomy: #54 |
+| FR11: Write every decision to a tamper-evident audit log | Complete | `audit/HashChain`, `audit/AuditLogService`, `persistence/AuditLogRepository`, `GET /api/audit`, `GET /api/audit/verify` |
+| FR12: Show incidents, approvals and action levels on a dashboard | Partial | JSON API: `api/IncidentController`, `api/AuditController`, `api/TrustController`. Thymeleaf dashboard: #44 |
 
-**Working end to end:** yes, the primary use case. `docker compose up --build` starts the services, Nginx, PostgreSQL, the monitoring stack and the healer. Crashing order-service with `./scenarios/inject.sh crash order-service` fires `ServiceDown`, the healer matches the restart rule, scores it L0, restarts the container through Docker, checks recovery in Prometheus and closes the incident as `RESOLVED`, with every step in the audit log. `CrashRecoveryIT` tests the same flow against real Docker and PostgreSQL. The secondary use case (rollback with approval) is Phase 3.
+**Working end to end:** the primary use case (S01, crash → automatic restart), from `docker compose up --build`, and in `CrashRecoveryIT`. The secondary use case (rollback with approval) is the main Phase 3 goal.
 
-## Testing So Far
+**Benchmark (Phase 1 evaluation):** 18 scenarios in `scenarios/README.md`; S01-S12 can be injected today. The harness that runs them three ways and measures MTTR, auto-resolution rate, false-fix rate, approvals per incident and injection block rate is #46.
 
-All of these run with `mvn verify` from the repo root, and in GitHub Actions on every push and pull request (`.github/workflows/ci.yml`).
+## Scope and Design Changes Since Phase 1
 
-- **Healer unit tests (JUnit 5):** the shared types, `PolicyLoaderTest`, `RiskScorerTest`, `PolicyConfigTest`, `AllowListTest`, `ActionValidatorTest`, `HashChainTest`, `AuditLogServiceTest` (tampering, deleted entries, forks, 40 concurrent appends), `SchemaMigrationTest`, `AuditConfigTest`, `TrustRecordTest`, `TrustServiceTest`, `ApiTest`, `AlertWebhookControllerTest`, `AlertParserTest`, `IncidentServiceTest`, `RuleMatcherTest`, `CooldownGuardTest`, `DockerActionExecutorTest`, `LokiLogClientTest`, `HealingOrchestratorTest`, `PrometheusClientTest`, `PrometheusRecoveryVerifierTest`, `VerificationConfigTest`. The persistence tests run the real Flyway migrations on in-memory H2 in PostgreSQL mode.
-- **Integration test:** `CrashRecoveryIT` (Testcontainers) kills a real container, posts a `ServiceDown` alert and checks that the healer restarts it, resolves the incident and keeps the audit chain valid, on real PostgreSQL.
-- **Target services:** 23 unit and MockMvc tests in each of `order-service` and `inventory-service` (API, Prometheus metrics, JSON logging, every chaos switch and its input validation), including `ChaosControllerTest`.
+| Change | Reason |
+|---|---|
+| Two target services (order-service, inventory-service) instead of "2 to 3" | Two services behind Nginx cover every scenario in the catalogue (single crash, both crashing, one slow while the other is healthy); a third would add build time without a new failure type |
+| A shared `model/` package (`Alert`, `Diagnosis`, `ActionType`, `AutonomyLevel`, `RiskAssessment`, `ExecutionResult`) and the `ActionExecutor`/`RecoveryVerifier` interfaces were agreed on day 1 of Phase 2 | Four people built the stages in parallel; fixed types and interfaces let each stage be built and tested against fakes before the others existed |
+| Spring JDBC (`JdbcClient`) with Flyway migrations instead of an ORM; reads (`*Repository`) and writes (`*Store`) are separate classes | The audit log must be append-only and its hash chain is computed over exact column values, so we wanted explicit SQL; separating reads from writes keeps the read-only API from being able to change anything |
+| Unit tests run the real Flyway migrations on H2 in PostgreSQL mode; only the integration tests use real PostgreSQL (Testcontainers) | Keeps `mvn test` fast and Docker-free while still checking the schema; the ITs cover PostgreSQL itself |
+| Resilience4j (listed in the Phase 1 stack) is not used | Restart loops are prevented by our own `CooldownGuard` (60 s per target) and the verification timeout, which the policy and audit log need to see; a separate library added nothing for that |
+| Nginx going down (S18) opens an incident but is never healed (L3, human only) | Nginx is shared by every service and is not in the allow-list, so restarting it automatically would have the largest blast radius in the system |
+| The approval dashboard moved from Saahithi's Phase 3 work to Nida's | Balances the Phase 3 work across the four members; the dashboard only calls the approval API Madhuri builds |
+
+## Design Patterns and Principles Applied
+
+| Pattern / Principle | Where | Why |
+|---|---|---|
+| Layered architecture / separation of concerns | `api` → `orchestration` → stage packages (`detection`, `diagnosis`, `validation`, `policy`, `execution`, `verification`, `trust`, `audit`) → `persistence` | Controllers only parse requests and call services; each package owns one stage of the healing loop, so a change to risk scoring never touches Docker code (high cohesion, low coupling) |
+| Pipeline (fixed sequence of stages) | `orchestration/HealingOrchestrator.run` | Every incident goes through the same ordered stages (diagnose → validate → score → execute → verify → audit → trust), so no path can skip validation or the audit log |
+| Strategy / Dependency Inversion | `execution/ActionExecutor` (`DockerActionExecutor`), `verification/RecoveryVerifier` (`PrometheusRecoveryVerifier`) | The orchestrator depends on interfaces, not on Docker or Prometheus; Phase 3 adds scale-out and rollback executors and tests swap in mocks |
+| Dependency Injection (constructor injection) | All services; `@Configuration` classes `PolicyConfig`, `AuditConfig`, `DockerConfig`, `VerificationConfig`, `TrustConfig` | Every dependency is explicit and replaceable; `HealingOrchestratorTest` builds the orchestrator with mocks and a same-thread executor |
+| Repository pattern with read/write separation | `persistence/IncidentRepository`, `AuditLogRepository`, `TrustRepository` (read) and `IncidentStore`, `DecisionStore` (write) | SQL stays in one package; the read-only API can't write |
+| Configuration over code (Open/Closed) | `policy.yaml`, `rules.yaml` | New rules, weights, thresholds and allowed targets need no code change (Phase 1 usability requirement: "policy changes need only a YAML edit") |
+| Fail fast | `policy/PolicyLoader`, `PolicyConfig` | A policy whose weights don't add up to 100 or that has unknown actions stops the healer at startup instead of scoring wrongly |
+| Immutable value objects (Java records) | `model/*`, `Rule`, `Policy`, `AuditEntry`, `TrustRecord`, `ValidationResult` | Data passed between stages can't be changed by a later stage; records validate their fields in their constructors |
+| Hash chain (tamper evidence) | `audit/HashChain`, `audit/AuditLogService` | Each audit entry stores the SHA-256 of the previous one, so a changed, deleted or reordered entry breaks `GET /api/audit/verify` |
+| Allow-list (default deny) | `validation/ActionValidator`, `policy/AllowList` | Logs are untrusted input: anything a diagnosis proposes that isn't explicitly listed is rejected before it is scored |
+
+## Testing
+
+- **Unit tests (JUnit 5, Mockito, MockMvc):** 157 in `strata-healer` (shared types, policy loader, risk scorer, allow-list, action validator, hash chain, audit log service including tampering and 40 concurrent appends, schema migrations, trust, API, webhook, alert parser, incidents, rule matcher, cooldown, Docker executor, Loki client, orchestrator, Prometheus client and recovery verifier), and 23 each in `order-service` and `inventory-service` (API, metrics, JSON logging, every chaos switch). The persistence tests run the real Flyway migrations on H2 in PostgreSQL mode.
+- **Integration tests (Testcontainers):** `CrashRecoveryIT` kills a real container, posts a `ServiceDown` alert and checks that the healer restarts it, resolves the incident and keeps the audit chain valid, on real PostgreSQL. Phase 3 adds `RollbackApprovalIT` (#50) and `PromptInjectionIT` (#53).
 - **Monitoring config:** promtool unit tests for the alert rules (`infra/prometheus/tests/alerts-test.yml`); CI also checks the Prometheus and Alertmanager configs and `docker-compose.yml`.
+- **Coverage:** JaCoCo report in CI is being added (#47).
 
-## Next Steps (Phase 3)
+All of these run in GitHub Actions on every push and pull request (`.github/workflows/ci.yml`), and pass on `main`.
 
-- LLM diagnosis of unknown errors with a local Ollama model, plus prompt-injection defense for log text
-- Scale-out and rollback actions, with canary execution (one instance first)
-- Approval dashboard (Thymeleaf) for L2 actions, with a preview, Approve/Deny and a safe fallback on timeout
-- Earned autonomy: promote or demote each action's level from its trust record
-- Benchmark of 15-20 injected failures (crash, slow responses, traffic spike, bad deployment, memory growth, malicious log lines), each run three ways: manual fix, rules only, full STRATA
-- Measure MTTR, auto-resolution rate, false-fix rate, approvals per incident and injection block rate
+```bash
+mvn test                                   # unit tests, all modules (no Docker needed)
+mvn verify                                 # unit + integration tests (Docker must be running)
+mvn -pl strata-healer test                 # healer unit tests only
+mvn -pl strata-healer verify -Dit.test=CrashRecoveryIT   # one integration test
+docker run --rm -v "$PWD/infra/prometheus:/p" -w /p/tests --entrypoint promtool prom/prometheus:v3.5.0 test rules alerts-test.yml
+```
 
-## Team Contributions
+## Known Issues
 
-> Each member updates their own row with exactly what they built this phase.
+- An L2 decision currently stops at `AWAITING_APPROVAL` with no way to approve or deny it (approval API #50, dashboard #44).
+- An error no rule matches is escalated straight to a human, because LLM diagnosis isn't built yet (#52).
+- `HighLatency` and `HighMemory` alerts don't exist yet, so S08-S12 don't fire an alert (#39, in review).
+- Failure switches live in memory, so a restart resets them. This is intended (it's what lets a restart fix S05-S12), but it means a switch can't survive a restart for testing.
+- The integration tests need Docker; on Colima they need the two extra environment variables above.
+
+## Team Contributions (Phase 3)
+
+> Each member updates their own row with exactly what they built this phase (features, classes, files, tests and reviews). Phase 3 issues are on the [milestone](https://github.com/saahiwrite/strata/milestone/2).
 
 | Member | Contributions This Phase |
+|---|---|
+| Nida Esen | _To be filled in (#41 bad-deploy image, #42 chaos log switch, #43 traffic spike, #44 dashboard)_ |
+| Shivani Radhakrishnan | _To be filled in (#39 latency and memory alerts, #45 Nginx down alert, #46 benchmark harness, #47 CI coverage and ITs, #48 fresh-clone check)_ |
+| Madhuri Hegde | _To be filled in (#49 scale out, rollback and canary, #50 approval workflow, #51 roll back and escalate)_ |
+| Saahithi Mallarapu | Planned Phase 3 (milestone and issues #41-#56) and moved this README to the Phase 3 template (feature status, scope changes, design patterns, testing, known issues). _To be completed (#52 LLM diagnosis, #53 prompt-injection defense, #54 earned autonomy, #55 submission)_ |
+
+<details>
+<summary>Phase 2 contributions</summary>
+
+| Member | Contributions in Phase 2 |
 |---|---|
 | Nida Esen | Built `order-service` and `inventory-service` (Spring Boot 3, Actuator, Prometheus metrics, JSON logs via Logback); the failure switches (crash, error rate, slow responses, memory growth, reset) with their metrics; the Nginx entry point on :8080; the 18-scenario failure catalogue and `scenarios/inject.sh`; `ChaosControllerTest`, `ChaosStateTest`, `MemoryLeakTest`, `OrderControllerTest`, `InventoryControllerTest`, `JsonLoggingTest` |
 | Shivani Radhakrishnan | Docker Compose file with PostgreSQL, Prometheus, Alertmanager, Loki, Promtail and Grafana; Prometheus scrape config; `ServiceDown` and `HighErrorRate` alert rules with promtool tests; Alertmanager webhook to the healer; Grafana dashboard (up/down, error rate, latency, memory, logs); `PrometheusClient` and `PrometheusRecoveryVerifier` with unit tests (#23-#26); added the services, Nginx and the healer to Compose, `CrashRecoveryIT` and the GitHub Actions CI (#15) |
 | Madhuri Hegde | Built the healer pipeline in `strata-healer`.<br>**Skeleton and webhook (#19):** the Spring Boot application, its package layout and `POST /api/alerts`, which accepts Alertmanager JSON and returns 202.<br>**Detection (#28):** `AlertParser`, which turns the webhook payload into alerts and skips resolved or incomplete ones, and `IncidentService`, which opens, resolves and escalates incidents and reuses the open incident when Alertmanager repeats an alert.<br>**Diagnosis and execution (#29):** `RuleMatcher` with `rules.yaml` (a crash maps to a restart, with a more specific rule when the logs show `OutOfMemoryError`); `LokiLogClient`; `DockerActionExecutor`, which restarts a named container through docker-java; and `CooldownGuard`.<br>**Orchestration (#33):** `HealingOrchestrator`, which runs an alert through diagnosis, validation, risk scoring, execution, recovery verification, the audit log and the trust record, and handles L2 (waits for approval), L3 (hands to a human) and failures (escalates). It saves incidents and decisions to the database (`IncidentStore`, `DecisionStore`), and the `V2` migration fixes the `decisions.outcome` column, which was too short for `AWAITING_APPROVAL`.<br>**Tests:** `AlertWebhookControllerTest`, `AlertParserTest`, `IncidentServiceTest`, `RuleMatcherTest`, `CooldownGuardTest`, `DockerActionExecutorTest`, `LokiLogClientTest` and `HealingOrchestratorTest` (10 cases). |
 | Saahithi Mallarapu | Set up the repository (folder scaffold, `.env.example`, `.gitignore`, labels, the Phase 2 milestone and issues), and wrote this README and the Phase 1 design doc (`docs/phase1-design.md`).<br>**Shared foundation (#20):** the parent `pom.xml`, and the types every healing stage uses: `Alert`, `Diagnosis`, `ActionType`, `AutonomyLevel`, `RiskAssessment`, `ExecutionResult`, `ActionExecutor` and `RecoveryVerifier`.<br>**Risk policy (#21):** `policy.yaml` (factor weights, level thresholds, environments, per-action risk); `PolicyLoader`, which reads it safely and stops startup on a bad policy; and `RiskScorer`, which turns blast radius, reversibility, environment, diagnosis confidence and past failures into a score of 0-100 and a level from L0 to L3.<br>**Validation and audit (#22):** the action allow-list and `ActionValidator`, which rejects unlisted actions and target names injected through logs; the Flyway schema (`incidents`, `decisions`, `action_trust`, `audit_log`); and the SHA-256 hash-chained audit log (`HashChain`, `AuditLogService`), which detects changed, deleted, reordered or forged entries.<br>**Trust and API (#30):** `TrustService`, which keeps each action's successes and failures and feeds them into the risk score; and the read-only endpoints `GET /api/incidents`, `/api/incidents/{id}`, `/api/audit`, `/api/audit/verify` and `/api/trust`.<br>**Tests:** 105 JUnit 5 tests in the healer, run by `mvn verify`, including `PolicyLoaderTest`, `RiskScorerTest`, `ActionValidatorTest`, `HashChainTest`, `AuditLogServiceTest` (tampering and 40 concurrent appends), `SchemaMigrationTest`, `TrustServiceTest` and `ApiTest`.<br>**End of Phase 2 (#31):** brought the README's progress, testing and structure sections up to date. |
+
+</details>
