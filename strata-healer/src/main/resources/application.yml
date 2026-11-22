@@ -12,3 +12,9 @@ strata:
     seconds: 60
   verify:
     timeout-seconds: 30
+  scale:
+    max-instances: 3
+  canary:
+    verify-timeout-seconds: 60
+  rollback:
+    previous-image-label: strata.previous-image

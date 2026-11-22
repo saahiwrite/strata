@@ -15,6 +15,8 @@ import edu.neu.strata.healer.model.Diagnosis;
 
 class RuleMatcherTest {
 
+    private static final String CONTAINER = "strata-order-service-1";
+
     private final RuleMatcher matcher = new RuleMatcher();
 
     private Alert alert(String name, String container) {
@@ -50,6 +52,29 @@ class RuleMatcherTest {
         Diagnosis diagnosis = matcher.match(alert("ServiceDown", null), List.of()).orElseThrow();
 
         assertEquals("order-service", diagnosis.target());
+    }
+
+    @Test
+    void highLatencyProposesScaleOut() {
+        Diagnosis diagnosis = matcher.match(alert("HighLatency", CONTAINER), List.of()).orElseThrow();
+
+        assertEquals("high-latency-scale-out", diagnosis.ruleId());
+        assertEquals(ActionType.SCALE_OUT, diagnosis.proposedAction());
+    }
+
+    @Test
+    void errorsRightAfterAStartProposeARollback() {
+        List<String> logs = List.of("{\"message\":\"Started OrderServiceApplication in 4.2 seconds\"}");
+
+        Diagnosis diagnosis = matcher.match(alert("HighErrorRate", CONTAINER), logs).orElseThrow();
+
+        assertEquals("error-rate-after-deploy-rollback", diagnosis.ruleId());
+        assertEquals(ActionType.ROLLBACK, diagnosis.proposedAction());
+    }
+
+    @Test
+    void errorRateWithoutARecentStartHasNoRule() {
+        assertTrue(matcher.match(alert("HighErrorRate", CONTAINER), List.of("some other log line")).isEmpty());
     }
 
     @Test
