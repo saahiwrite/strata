@@ -29,10 +29,12 @@ public final class PolicyLoader {
     public static final String DEFAULT_RESOURCE = "policy.yaml";
 
     private static final Set<String> TOP_LEVEL_KEYS =
-            Set.of("environment", "weights", "thresholds", "environments", "actions", "allowList");
+            Set.of("environment", "weights", "thresholds", "environments", "actions", "allowList", "diagnosis");
     private static final Set<String> THRESHOLD_KEYS = Set.of("l1From", "l2From", "l3From");
     private static final Set<String> ACTION_KEYS = Set.of("blastRadius", "reversibility", "minLevel");
     private static final Set<String> ALLOW_LIST_KEYS = Set.of("actions", "targets");
+    private static final Set<String> DIAGNOSIS_KEYS = Set.of("llm");
+    private static final Set<String> LLM_KEYS = Set.of("minLevel");
 
     /** Loads the policy bundled on the classpath. */
     public Policy loadDefault() {
@@ -133,7 +135,24 @@ public final class PolicyLoader {
                 ? AllowList.NONE
                 : allowList(map(doc.get("allowList"), "allowList"));
 
-        return new Policy(environment, weights, thresholds, environments, actions, allowList);
+        return new Policy(environment, weights, thresholds, environments, actions, allowList, llmMinLevel(doc));
+    }
+
+    // diagnosis.llm.minLevel: the floor for actions the LLM proposes (null = the policy default)
+    private static AutonomyLevel llmMinLevel(Map<String, Object> doc) {
+        if (doc.get("diagnosis") == null) {
+            return null;
+        }
+        Map<String, Object> diagnosis = map(doc.get("diagnosis"), "diagnosis");
+        checkKeys(diagnosis, DIAGNOSIS_KEYS, "diagnosis");
+        if (diagnosis.get("llm") == null) {
+            return null;
+        }
+        Map<String, Object> llm = map(diagnosis.get("llm"), "diagnosis.llm");
+        checkKeys(llm, LLM_KEYS, "diagnosis.llm");
+        Object minLevel = llm.get("minLevel");
+        return minLevel == null ? null
+                : enumValue(AutonomyLevel.class, text(minLevel, "diagnosis.llm.minLevel"), "diagnosis.llm.minLevel");
     }
 
     private static AllowList allowList(Map<String, Object> yaml) {

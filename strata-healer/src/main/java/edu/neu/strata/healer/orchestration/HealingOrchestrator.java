@@ -19,7 +19,7 @@ import edu.neu.strata.healer.audit.AuditLogService;
 import edu.neu.strata.healer.detection.Incident;
 import edu.neu.strata.healer.detection.IncidentService;
 import edu.neu.strata.healer.diagnosis.LokiLogClient;
-import edu.neu.strata.healer.diagnosis.RuleMatcher;
+import edu.neu.strata.healer.diagnosis.Diagnoser;
 import edu.neu.strata.healer.execution.ActionExecutor;
 import edu.neu.strata.healer.execution.CooldownGuard;
 import edu.neu.strata.healer.model.ActionType;
@@ -46,7 +46,7 @@ public class HealingOrchestrator {
 
     private final IncidentService incidents;
     private final LokiLogClient logClient;
-    private final RuleMatcher ruleMatcher;
+    private final Diagnoser diagnoser;
     private final ActionValidator validator;
     private final RiskScorer riskScorer;
     private final TrustService trust;
@@ -59,23 +59,23 @@ public class HealingOrchestrator {
     private final Executor background;
 
     @Autowired
-    public HealingOrchestrator(IncidentService incidents, LokiLogClient logClient, RuleMatcher ruleMatcher,
+    public HealingOrchestrator(IncidentService incidents, LokiLogClient logClient, Diagnoser diagnoser,
                                ActionValidator validator, RiskScorer riskScorer, TrustService trust,
                                CooldownGuard cooldown, ActionExecutor executor, RecoveryVerifier verifier,
                                AuditLogService audit, DecisionStore decisions,
                                @Value("${strata.verify.timeout-seconds:30}") long verifySeconds) {
-        this(incidents, logClient, ruleMatcher, validator, riskScorer, trust, cooldown, executor, verifier,
+        this(incidents, logClient, diagnoser, validator, riskScorer, trust, cooldown, executor, verifier,
                 audit, decisions, Duration.ofSeconds(verifySeconds), Executors.newVirtualThreadPerTaskExecutor());
     }
 
-    HealingOrchestrator(IncidentService incidents, LokiLogClient logClient, RuleMatcher ruleMatcher,
+    HealingOrchestrator(IncidentService incidents, LokiLogClient logClient, Diagnoser diagnoser,
                         ActionValidator validator, RiskScorer riskScorer, TrustService trust,
                         CooldownGuard cooldown, ActionExecutor executor, RecoveryVerifier verifier,
                         AuditLogService audit, DecisionStore decisions, Duration verifyTimeout,
                         Executor background) {
         this.incidents = incidents;
         this.logClient = logClient;
-        this.ruleMatcher = ruleMatcher;
+        this.diagnoser = diagnoser;
         this.validator = validator;
         this.riskScorer = riskScorer;
         this.trust = trust;
@@ -116,18 +116,22 @@ public class HealingOrchestrator {
                 "container", String.valueOf(alert.container())));
 
         List<String> logs = logClient.recentLogs(logSource(alert), LOG_WINDOW, LOG_LIMIT);
-        Optional<Diagnosis> found = ruleMatcher.match(alert, logs);
+        long started = System.nanoTime();
+        Optional<Diagnosis> found = diagnoser.diagnose(alert, logs);
+        long diagnosisMs = (System.nanoTime() - started) / 1_000_000;  // reported for LLM timing (Phase 1 NFR)
         if (found.isEmpty()) {
-            audit.append(AuditEventType.DIAGNOSIS, id, Map.of("result", "no rule matched"));
-            closeAsEscalated(incident, "no rule matched");
+            audit.append(AuditEventType.DIAGNOSIS, id, Map.of("result", "no diagnosis", "durationMs", diagnosisMs));
+            closeAsEscalated(incident, "no rule matched and no LLM diagnosis");
             return;
         }
         Diagnosis diagnosis = found.get();
         audit.append(AuditEventType.DIAGNOSIS, id, Map.of(
                 "ruleId", diagnosis.ruleId(),
+                "source", diagnosis.source().name(),
                 "action", diagnosis.proposedAction().name(),
                 "target", diagnosis.target(),
-                "confidence", diagnosis.confidence()));
+                "confidence", diagnosis.confidence(),
+                "durationMs", diagnosisMs));
 
         ValidationResult validation = validator.validate(diagnosis);
         audit.append(AuditEventType.VALIDATION, id, Map.of(

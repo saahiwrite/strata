@@ -3,6 +3,7 @@ package edu.neu.strata.healer.policy;
 import edu.neu.strata.healer.model.ActionType;
 import edu.neu.strata.healer.model.AutonomyLevel;
 import edu.neu.strata.healer.model.Diagnosis;
+import edu.neu.strata.healer.model.DiagnosisSource;
 import edu.neu.strata.healer.model.RiskAssessment;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -49,6 +50,10 @@ public final class RiskScorer {
         AutonomyLevel level = action == null
                 ? AutonomyLevel.L3_HUMAN_ONLY
                 : policy.thresholds().levelFor(score).stricterOf(action.minLevel());
+        if (diagnosis.source() == DiagnosisSource.LLM) {
+            // The LLM only proposes; the policy decides how far its proposals may run on their own
+            level = level.stricterOf(policy.llmMinLevel());
+        }
         return new RiskAssessment(score, level, factors);
     }
 

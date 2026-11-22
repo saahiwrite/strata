@@ -29,6 +29,10 @@ import edu.neu.strata.healer.audit.AuditLogService;
 import edu.neu.strata.healer.detection.Incident;
 import edu.neu.strata.healer.detection.IncidentService;
 import edu.neu.strata.healer.diagnosis.LokiLogClient;
+import edu.neu.strata.healer.diagnosis.Diagnoser;
+import edu.neu.strata.healer.diagnosis.DiagnosisChain;
+import edu.neu.strata.healer.diagnosis.LlmClient;
+import edu.neu.strata.healer.diagnosis.LlmDiagnoser;
 import edu.neu.strata.healer.diagnosis.RuleMatcher;
 import edu.neu.strata.healer.execution.ActionExecutor;
 import edu.neu.strata.healer.execution.CooldownGuard;
@@ -74,7 +78,11 @@ class HealingOrchestratorTest {
     }
 
     private HealingOrchestrator orchestrator(Policy policy) {
-        return new HealingOrchestrator(incidents, loki, new RuleMatcher(), new ActionValidator(policy),
+        return orchestrator(policy, new RuleMatcher());
+    }
+
+    private HealingOrchestrator orchestrator(Policy policy, Diagnoser diagnoser) {
+        return new HealingOrchestrator(incidents, loki, diagnoser, new ActionValidator(policy),
                 new RiskScorer(policy), trust, new CooldownGuard(Duration.ofMinutes(5), Clock.systemUTC()),
                 executor, verifier, audit, new DecisionStore(jdbc), Duration.ofSeconds(1), Runnable::run);
     }
@@ -214,5 +222,61 @@ class HealingOrchestratorTest {
 
         verify(executor).execute(ActionType.RESTART, CONTAINER);
         assertThat(incidents.findOpen("order-service", "ServiceDown")).isEmpty();
+    }
+
+    /** Rules first, then an LLM that always gives {@code reply}. */
+    private static Diagnoser rulesThenLlm(String reply) {
+        LlmClient llm = new LlmClient() {
+            @Override
+            public java.util.Optional<String> complete(String system, String user) {
+                return java.util.Optional.ofNullable(reply);
+            }
+
+            @Override
+            public String model() {
+                return "test-model";
+            }
+        };
+        return new DiagnosisChain(List.of(new RuleMatcher(), new LlmDiagnoser(llm, 0.6)));
+    }
+
+    @Test
+    void unknownErrorGetsAnLlmDiagnosisThatWaitsForApproval() {
+        Incident incident = open(alert("HighErrorRate", CONTAINER));
+        Diagnoser diagnoser = rulesThenLlm(
+                "{\"action\": \"RESTART\", \"target\": \"" + CONTAINER + "\", \"confidence\": 0.8}");
+
+        orchestrator(new PolicyLoader().loadDefault(), diagnoser).heal(incident);
+
+        verify(executor, never()).execute(any(), anyString());
+        assertThat(decisionOutcome(incident.id())).isEqualTo("AWAITING_APPROVAL");
+        AuditEntry diagnosis = audit.forIncident(incident.id()).stream()
+                .filter(e -> e.eventType() == AuditEventType.DIAGNOSIS).findFirst().orElseThrow();
+        assertThat(diagnosis.payload()).contains("\"source\":\"LLM\"", "\"ruleId\":\"llm:test-model\"",
+                "\"confidence\":0.6", "\"durationMs\":");
+    }
+
+    @Test
+    void llmProposalOfAnActionOutsideTheAllowListIsRejected() {
+        // The S15 reply from a real small model: an injected line talked it into a rollback of postgres
+        Incident incident = open(alert("HighErrorRate", CONTAINER));
+        Diagnoser diagnoser = rulesThenLlm(
+                "{\"action\": \"ROLLBACK\", \"target\": \"postgres\", \"confidence\": 1.0}");
+
+        orchestrator(new PolicyLoader().loadDefault(), diagnoser).heal(incident);
+
+        verify(executor, never()).execute(any(), anyString());
+        assertThat(incidentStatus(incident.id())).isEqualTo("ESCALATED");
+        assertThat(decisionOutcome(incident.id())).isEqualTo("REJECTED");
+    }
+
+    @Test
+    void unusableLlmReplyEscalatesToAHuman() {
+        Incident incident = open(alert("HighErrorRate", CONTAINER));
+
+        orchestrator(new PolicyLoader().loadDefault(), rulesThenLlm("I am not sure")).heal(incident);
+
+        verify(executor, never()).execute(any(), anyString());
+        assertThat(incidentStatus(incident.id())).isEqualTo("ESCALATED");
     }
 }
