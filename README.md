@@ -20,47 +20,48 @@ When a backend service crashes, slows down or gets overloaded, an on-call engine
 ## Architecture
 
 ```mermaid
-flowchart TB
+flowchart LR
     client([Client]) --> nginx[Nginx :8080]
     subgraph target[Target backend]
         nginx --> order[order-service]
         nginx --> inventory[inventory-service]
     end
-    order & inventory -- metrics --> prom[Prometheus]
-    order & inventory -- JSON logs --> promtail[Promtail] --> loki[Loki]
+    target -- metrics --> prom[Prometheus]
+    target -- JSON logs --> promtail[Promtail] --> loki[Loki]
     prom -- alert rules --> am[Alertmanager]
-    am -- webhook --> healer
+    am -- webhook --> detect
     subgraph healer[STRATA healer]
-        direction LR
-        detect[Detect] --> diagnose[Diagnose<br/>rules, then LLM] --> validate[Validate<br/>allow-list] --> score[Score risk<br/>L0-L3] --> execute[Execute] --> verify[Verify] --> learn[Trust and<br/>earned autonomy]
+        direction TB
+        detect[Detect] --> diagnose["Diagnose (rules, then LLM)"] --> validate["Validate (allow-list)"]
+        validate --> score["Score risk (L0-L3)"] --> execute[Execute] --> verify[Verify] --> learn[Trust and earned autonomy]
     end
     loki -. recent logs .-> diagnose
-    ollama[(Ollama<br/>local LLM)] -. only when no rule matches .-> diagnose
+    ollama[("Ollama (local LLM)")] -. only if no rule matches .-> diagnose
     execute -- Docker API --> target
-    verify -. queries .-> prom
-    healer --> pg[(PostgreSQL<br/>incidents, decisions,<br/>trust, audit log)]
+    verify -. checks .-> prom
+    healer --> pg[("PostgreSQL: incidents, decisions, trust, audit log")]
     healer --> api[REST API and dashboard]
-    prom & loki --> grafana[Grafana]
+    prom --> grafana[Grafana]
+    loki --> grafana
 ```
 
 **One incident through the healer** (`orchestration/`):
 
 ```mermaid
-flowchart LR
-    A[Alert] --> S{Logs try to<br/>instruct the healer?}
-    S -- yes --> W[Withhold those lines,<br/>audit, rules only]
-    S -- no --> D
-    W --> D[Diagnose]
+flowchart TB
+    A[Alert] --> S{"Logs try to instruct the healer?"}
+    S -- yes --> W["Withhold those lines, audit, rules only"] --> D
+    S -- no --> D[Diagnose]
     D -- no diagnosis --> H[Escalate to a human]
-    D --> V{On the allow-list?}
+    D --> V{"On the allow-list?"}
     V -- no --> H
-    V -- yes --> R[Risk score → level<br/>shifted by earned autonomy]
+    V -- yes --> R["Risk score to level, shifted by earned autonomy"]
     R -- L3 --> H
     R -- L2 --> P[Wait for approval]
-    R -- L0 / L1 --> X[Execute]
+    R -- "L0 or L1" --> X[Execute]
     X --> Y{Recovered?}
-    Y -- yes --> OK[Resolved,<br/>trust +1]
-    Y -- no --> U[Undo if possible,<br/>trust failure, escalate]
+    Y -- yes --> OK["Resolved, trust success"]
+    Y -- no --> U["Undo if possible, trust failure, escalate"]
 ```
 
 Every box writes to the hash-chained audit log. The injection screen, LLM diagnosis, earned autonomy and undo are in open PRs (see Feature Status).
