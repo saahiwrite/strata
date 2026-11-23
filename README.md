@@ -20,7 +20,7 @@ When a backend service crashes, slows down or gets overloaded, an on-call engine
 ## Architecture
 
 ```mermaid
-flowchart LR
+flowchart TB
     client([Client]) --> nginx[Nginx :8080]
     subgraph target[Target backend]
         nginx --> order[order-service]
@@ -31,15 +31,13 @@ flowchart LR
     prom -- alert rules --> am[Alertmanager]
     am -- webhook --> detect
     subgraph healer[STRATA healer]
-        direction TB
-        detect[Detect] --> diagnose["Diagnose (rules, then LLM)"] --> validate["Validate (allow-list)"]
-        validate --> score["Score risk (L0-L3)"] --> execute[Execute] --> verify[Verify] --> learn[Trust and earned autonomy]
+        detect[Detect] --> diagnose["Diagnose<br/>rules, then LLM"] --> validate["Validate<br/>allow-list"] --> score["Score risk<br/>L0-L3"]
+        score --> execute[Execute] --> verify[Verify] --> learn["Trust and<br/>earned autonomy"]
     end
     loki -. recent logs .-> diagnose
-    ollama[("Ollama (local LLM)")] -. only if no rule matches .-> diagnose
+    ollama[("Ollama<br/>local LLM")] -. only if no rule matches .-> diagnose
     execute -- Docker API --> target
-    verify -. checks .-> prom
-    healer --> pg[("PostgreSQL: incidents, decisions, trust, audit log")]
+    healer --> pg[("PostgreSQL<br/>incidents, decisions,<br/>trust, audit log")]
     healer --> api[REST API and dashboard]
     prom --> grafana[Grafana]
     loki --> grafana
