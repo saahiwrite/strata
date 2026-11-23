@@ -85,9 +85,27 @@ public class ExecutionStage {
             trust.recordSuccess(action, id);
             lifecycle.resolve(incident);
         } else {
+            ExecutionResult undone = undo(id, result);
             lifecycle.move(decision, DecisionOutcome.FAILED);
             trust.recordFailure(action, id);
-            lifecycle.escalate(incident, "service did not recover");
+            String note = undone.success() ? "undone: " : "not undone: ";
+            lifecycle.escalate(incident, "service did not recover (" + note + undone.detail() + ")");
         }
+    }
+
+    // The fix didn't help: take it back where that is possible, and record what happened either way
+    private ExecutionResult undo(long incidentId, ExecutionResult executed) {
+        ExecutionResult undone;
+        try {
+            undone = executor.undo(executed);
+        } catch (RuntimeException e) {
+            undone = ExecutionResult.failed(executed.action(), executed.target(), "undo failed: " + e.getMessage());
+        }
+        audit.append(AuditEventType.UNDO, incidentId, Map.of(
+                "action", executed.action().name(),
+                "target", executed.target(),
+                "success", undone.success(),
+                "detail", undone.detail()));
+        return undone;
     }
 }

@@ -18,6 +18,7 @@ public enum AuditEventType {
     EXECUTION,
     /** The recovery check's result. */
     VERIFICATION,
+    UNDO,
     /** The action's trust record changed. */
     TRUST_UPDATE,
     /** The incident was resolved or escalated. */

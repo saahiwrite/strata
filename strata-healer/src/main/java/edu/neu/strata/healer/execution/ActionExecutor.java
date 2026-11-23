@@ -7,4 +7,14 @@ import edu.neu.strata.healer.model.ExecutionResult;
 public interface ActionExecutor {
 
     ExecutionResult execute(ActionType type, String target);
+
+    /**
+     * Puts back what a successful {@link #execute} changed, when that is possible (for example the extra
+     * instance of a scale out). Many actions can't be undone, so by default nothing is done and the
+     * result is a failure saying so.
+     */
+    default ExecutionResult undo(ExecutionResult executed) {
+        return ExecutionResult.failed(executed.action(), executed.target(),
+                "nothing to undo for " + executed.action());
+    }
 }

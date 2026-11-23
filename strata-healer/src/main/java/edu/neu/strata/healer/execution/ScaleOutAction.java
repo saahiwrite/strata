@@ -53,6 +53,17 @@ public class ScaleOutAction {
         newLabels.put(ComposeServices.NUMBER_LABEL, String.valueOf(number));
 
         cloner.start(source, name, source.getConfig().getImage(), newLabels, service);
-        return new ExecutionResult(ActionType.SCALE_OUT, target, true, "started " + name);
+        return new ExecutionResult(ActionType.SCALE_OUT, target, true, "started " + name, name);
+    }
+
+    // Stops and removes the instance this action started
+    public ExecutionResult undo(ExecutionResult executed) {
+        String name = executed.created();
+        if (name == null) {
+            return ExecutionResult.failed(ActionType.SCALE_OUT, executed.target(), "no started instance to remove");
+        }
+        docker.stopContainerCmd(name).withTimeout(10).exec();
+        docker.removeContainerCmd(name).withForce(true).exec();
+        return new ExecutionResult(ActionType.SCALE_OUT, executed.target(), true, "removed " + name);
     }
 }
