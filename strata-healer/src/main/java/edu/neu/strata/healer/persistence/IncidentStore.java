@@ -43,6 +43,14 @@ public class IncidentStore {
                 .optional();
     }
 
+    public Optional<IncidentStatus> statusOf(long id) {
+        return jdbc.sql("SELECT status FROM incidents WHERE id = ?")
+                .param(id)
+                .query(String.class)
+                .optional()
+                .map(IncidentStatus::valueOf);
+    }
+
     public void close(long id, IncidentStatus status, Instant closedAt) {
         jdbc.sql("UPDATE incidents SET status = ?, closed_at = ? WHERE id = ?")
                 .params(status.name(), toOffset(closedAt), id)

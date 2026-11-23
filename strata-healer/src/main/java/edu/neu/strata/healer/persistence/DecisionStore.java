@@ -11,6 +11,7 @@ import org.springframework.stereotype.Repository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import edu.neu.strata.healer.model.DecisionOutcome;
 import edu.neu.strata.healer.model.Diagnosis;
 import edu.neu.strata.healer.model.RiskAssessment;
 
@@ -25,7 +26,8 @@ public class DecisionStore {
         this.jdbc = jdbc;
     }
 
-    public long insert(long incidentId, Diagnosis diagnosis, String rejectionReason, RiskAssessment risk, String outcome) {
+    public long insert(long incidentId, Diagnosis diagnosis, String rejectionReason, RiskAssessment risk,
+                       DecisionOutcome outcome) {
         KeyHolder keys = new GeneratedKeyHolder();
         jdbc.sql("INSERT INTO decisions (incident_id, rule_id, action, target, confidence, allowed, rejection_reason, "
                         + "risk_score, risk_factors, autonomy_level, outcome, decided_at) "
@@ -35,14 +37,14 @@ public class DecisionStore {
                         risk == null ? null : risk.score(),
                         risk == null ? null : factorsAsJson(risk),
                         risk == null ? null : risk.level().name(),
-                        outcome, OffsetDateTime.now(ZoneOffset.UTC))
+                        outcome.name(), OffsetDateTime.now(ZoneOffset.UTC))
                 .update(keys, "id");
         return keys.getKey().longValue();
     }
 
-    public void updateOutcome(long decisionId, String outcome) {
+    public void updateOutcome(long decisionId, DecisionOutcome outcome) {
         jdbc.sql("UPDATE decisions SET outcome = ? WHERE id = ?")
-                .params(outcome, decisionId)
+                .params(outcome.name(), decisionId)
                 .update();
     }
 
