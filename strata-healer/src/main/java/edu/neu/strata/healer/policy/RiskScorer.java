@@ -46,9 +46,11 @@ public final class RiskScorer {
         score += add(factors, RiskFactor.PAST_FAILURES, past.failureRate());
         score = Math.min(score, RiskAssessment.MAX_SCORE);
 
+        // Earned autonomy shifts the scored level; the action's minLevel still applies afterwards (FR10)
         AutonomyLevel level = action == null
                 ? AutonomyLevel.L3_HUMAN_ONLY
-                : policy.thresholds().levelFor(score).stricterOf(action.minLevel());
+                : policy.autonomy().apply(policy.thresholds().levelFor(score), past.levelShift())
+                        .stricterOf(action.minLevel());
         return new RiskAssessment(score, level, factors);
     }
 

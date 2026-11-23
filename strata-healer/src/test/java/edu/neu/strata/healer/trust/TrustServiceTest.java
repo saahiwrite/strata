@@ -11,6 +11,7 @@ import edu.neu.strata.healer.model.Diagnosis;
 import edu.neu.strata.healer.persistence.AuditLogRepository;
 import edu.neu.strata.healer.persistence.TestDatabase;
 import edu.neu.strata.healer.persistence.TrustRepository;
+import edu.neu.strata.healer.policy.AutonomyRules;
 import edu.neu.strata.healer.policy.PolicyLoader;
 import edu.neu.strata.healer.policy.RiskScorer;
 import java.time.Clock;
@@ -48,7 +49,8 @@ class TrustServiceTest {
         trust.recordSuccess(ActionType.RESTART, 2L);
         TrustRecord last = trust.recordFailure(ActionType.RESTART, 3L);
 
-        assertThat(last).isEqualTo(new TrustRecord(ActionType.RESTART, 2, 1, NOW));
+        // the failure ends the run of successes and demotes restart one level (earned autonomy)
+        assertThat(last).isEqualTo(new TrustRecord(ActionType.RESTART, 2, 1, 0, 1, NOW));
         assertThat(trust.get(ActionType.RESTART)).isEqualTo(last);
         assertThat(trust.get(ActionType.SCALE_OUT).runs()).isZero();
         assertThat(trust.all()).extracting(TrustRecord::runs).containsExactly(3, 0, 0);
@@ -59,13 +61,16 @@ class TrustServiceTest {
         trust.recordSuccess(ActionType.RESTART, 7L);
         trust.recordFailure(ActionType.RESTART, null);
 
-        List<AuditEntry> entries = audit.latest(10);
-        assertThat(entries).extracting(AuditEntry::eventType).containsOnly(AuditEventType.TRUST_UPDATE);
-        assertThat(entries.get(1).incidentId()).isEqualTo(7L);
-        assertThat(entries.get(1).payload())
-                .isEqualTo("{\"action\":\"RESTART\",\"failures\":0,\"outcome\":\"SUCCESS\",\"successes\":1}");
-        assertThat(entries.get(0).payload())
-                .isEqualTo("{\"action\":\"RESTART\",\"failures\":1,\"outcome\":\"FAILURE\",\"successes\":1}");
+        List<AuditEntry> entries = audit.latest(10);  // newest first
+        assertThat(entries).extracting(AuditEntry::eventType).containsExactly(
+                AuditEventType.AUTONOMY_CHANGE, AuditEventType.TRUST_UPDATE, AuditEventType.TRUST_UPDATE);
+        assertThat(entries.get(2).incidentId()).isEqualTo(7L);
+        assertThat(entries.get(2).payload()).isEqualTo("{\"action\":\"RESTART\",\"failures\":0,\"levelShift\":0,"
+                + "\"outcome\":\"SUCCESS\",\"successStreak\":1,\"successes\":1}");
+        assertThat(entries.get(1).payload()).isEqualTo("{\"action\":\"RESTART\",\"failures\":1,\"levelShift\":1,"
+                + "\"outcome\":\"FAILURE\",\"successStreak\":0,\"successes\":1}");
+        assertThat(entries.get(0).payload()).isEqualTo("{\"action\":\"RESTART\",\"change\":\"DEMOTED\",\"fromShift\":0,"
+                + "\"reason\":\"the action failed or the service did not recover\",\"toShift\":1}");
         assertThat(audit.verify().valid()).isTrue();
     }
 
@@ -104,7 +109,89 @@ class TrustServiceTest {
 
         assertThat(trust.get(ActionType.RESTART)).extracting(TrustRecord::successes, TrustRecord::failures)
                 .containsExactly(30, 10);
-        assertThat(audit.verify().entries()).isEqualTo(40);
+        assertThat(audit.latest(500)).filteredOn(e -> e.eventType() == AuditEventType.TRUST_UPDATE).hasSize(40);
         assertThat(audit.verify().valid()).isTrue();
+    }
+
+    private TrustService trustWith(AutonomyRules rules) {
+        return new TrustService(new TrustRepository(jdbc), db.transactions, audit, clock, rules);
+    }
+
+    private List<AuditEntry> autonomyChanges() {
+        return audit.latest(500).stream().filter(e -> e.eventType() == AuditEventType.AUTONOMY_CHANGE).toList();
+    }
+
+    @Test
+    void aRunOfSuccessesPromotesTheActionOnceAndIsAudited() {
+        for (long i = 1; i <= 4; i++) {
+            assertThat(trust.recordSuccess(ActionType.RESTART, i).levelShift()).isZero();
+        }
+        TrustRecord fifth = trust.recordSuccess(ActionType.RESTART, 5L);
+
+        assertThat(fifth.levelShift()).isEqualTo(-1);
+        assertThat(fifth.successStreak()).isZero();
+        assertThat(trust.history(ActionType.RESTART).levelShift()).isEqualTo(-1);
+        assertThat(autonomyChanges()).singleElement().satisfies(e -> {
+            assertThat(e.incidentId()).isEqualTo(5L);
+            assertThat(e.payload()).contains("\"change\":\"PROMOTED\"", "\"toShift\":-1", "5 successes in a row");
+        });
+
+        // maxPromotion is 1: five more successes keep it where it is, and write no new change
+        for (long i = 6; i <= 10; i++) {
+            trust.recordSuccess(ActionType.RESTART, i);
+        }
+        assertThat(trust.get(ActionType.RESTART).levelShift()).isEqualTo(-1);
+        assertThat(autonomyChanges()).hasSize(1);
+    }
+
+    @Test
+    void failuresDemoteUpToTheCapAndSuccessesEarnItBack() {
+        trust.recordFailure(ActionType.RESTART, 1L);
+        trust.recordFailure(ActionType.RESTART, 2L);
+        trust.recordFailure(ActionType.RESTART, 3L);
+        assertThat(trust.get(ActionType.RESTART).levelShift()).isEqualTo(2);  // maxDemotion
+
+        for (int i = 0; i < 5; i++) {
+            trust.recordSuccess(ActionType.RESTART, null);
+        }
+        assertThat(trust.get(ActionType.RESTART).levelShift()).isEqualTo(1);
+        assertThat(autonomyChanges()).extracting(AuditEntry::payload)
+                .anyMatch(p -> p.contains("PROMOTED") && p.contains("\"fromShift\":2"));
+    }
+
+    @Test
+    void standingIsKeptInTheDatabase() {
+        trust.recordFailure(ActionType.SCALE_OUT, null);
+        trust.recordSuccess(ActionType.SCALE_OUT, null);
+
+        TrustService restarted = new TrustService(new TrustRepository(jdbc), db.transactions, audit, clock);
+        assertThat(restarted.get(ActionType.SCALE_OUT))
+                .extracting(TrustRecord::successStreak, TrustRecord::levelShift).containsExactly(1, 1);
+    }
+
+    @Test
+    void policyRulesAreUsed() {
+        TrustService quick = trustWith(new AutonomyRules(2, 1, 0, 0));
+        quick.recordSuccess(ActionType.RESTART, null);
+        quick.recordFailure(ActionType.RESTART, null);  // demotion off: only resets the run
+        quick.recordSuccess(ActionType.RESTART, null);
+
+        assertThat(quick.recordSuccess(ActionType.RESTART, null).levelShift()).isEqualTo(-1);
+    }
+
+    @Test
+    void repeatedFailuresTakeRestartOutOfAutomaticMode() {
+        RiskScorer scorer = new RiskScorer(new PolicyLoader().loadDefault());
+        Diagnosis restart = new Diagnosis("service-down-restart", ActionType.RESTART, "order-service", 0.9);
+        assertThat(scorer.assess(restart, trust.history(ActionType.RESTART)).level()).isEqualTo(AutonomyLevel.L0_AUTO);
+
+        trust.recordSuccess(ActionType.RESTART, null);
+        trust.recordFailure(ActionType.RESTART, null);
+        trust.recordFailure(ActionType.RESTART, null);
+
+        // The score itself rises to L1 (2 of 3 runs failed), and two demotions add two levels: L3, human only
+        assertThat(trust.get(ActionType.RESTART).levelShift()).isEqualTo(2);
+        assertThat(scorer.assess(restart, trust.history(ActionType.RESTART)).level())
+                .isEqualTo(AutonomyLevel.L3_HUMAN_ONLY);
     }
 }

@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import edu.neu.strata.healer.model.ActionType;
 import edu.neu.strata.healer.policy.ActionHistory;
+import edu.neu.strata.healer.policy.AutonomyRules;
+import java.time.Instant;
 import org.junit.jupiter.api.Test;
 
 class TrustRecordTest {
@@ -30,6 +32,17 @@ class TrustRecordTest {
     void rejectsBadValues() {
         assertThatThrownBy(() -> new TrustRecord(null, 0, 0, null)).isInstanceOf(NullPointerException.class);
         assertThatThrownBy(() -> new TrustRecord(ActionType.RESTART, -1, 0, null))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void carriesTheEarnedAutonomyStandingIntoTheHistory() {
+        TrustRecord record = new TrustRecord(ActionType.RESTART, 6, 1, 2, -1, Instant.EPOCH);
+
+        assertThat(record.toHistory()).isEqualTo(new ActionHistory(6, 1, -1));
+        assertThat(record.standing()).isEqualTo(new AutonomyRules.Standing(2, -1));
+        assertThatThrownBy(
+                () -> new TrustRecord(ActionType.RESTART, 0, 0, -1, 0, null))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 }

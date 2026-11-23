@@ -2,6 +2,7 @@ package edu.neu.strata.healer.trust;
 
 import edu.neu.strata.healer.model.ActionType;
 import edu.neu.strata.healer.policy.ActionHistory;
+import edu.neu.strata.healer.policy.AutonomyRules;
 import java.time.Instant;
 import java.util.Objects;
 
@@ -11,20 +12,36 @@ import java.util.Objects;
  * @param action    the action type
  * @param successes runs after which the service recovered
  * @param failures  runs after which it didn't (or the action itself failed)
- * @param updatedAt when the record last changed, or null when the action has never run
+ * @param successStreak successes in a row since the last failure or promotion (earned autonomy)
+ * @param levelShift    earned-autonomy shift: negative = promoted (less cautious), positive = demoted
+ * @param updatedAt     when the record last changed, or null when the action has never run
  */
-public record TrustRecord(ActionType action, int successes, int failures, Instant updatedAt) {
+public record TrustRecord(ActionType action, int successes, int failures, int successStreak, int levelShift,
+                          Instant updatedAt) {
 
     public TrustRecord {
         Objects.requireNonNull(action, "action");
         if (successes < 0 || failures < 0) {
             throw new IllegalArgumentException("counts must not be negative, were " + successes + " and " + failures);
         }
+        if (successStreak < 0) {
+            throw new IllegalArgumentException("successStreak must not be negative, was " + successStreak);
+        }
+    }
+
+    /** A record with no earned-autonomy standing yet. */
+    public TrustRecord(ActionType action, int successes, int failures, Instant updatedAt) {
+        this(action, successes, failures, 0, 0, updatedAt);
     }
 
     /** The record of an action that has never run. */
     public static TrustRecord empty(ActionType action) {
         return new TrustRecord(action, 0, 0, null);
+    }
+
+    /** Where the action stands in earned autonomy. */
+    public AutonomyRules.Standing standing() {
+        return new AutonomyRules.Standing(successStreak, levelShift);
     }
 
     public int runs() {
@@ -38,6 +55,6 @@ public record TrustRecord(ActionType action, int successes, int failures, Instan
 
     /** The counts in the form the risk scorer's past-failures factor takes. */
     public ActionHistory toHistory() {
-        return new ActionHistory(successes, failures);
+        return new ActionHistory(successes, failures, levelShift);
     }
 }

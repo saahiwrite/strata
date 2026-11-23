@@ -136,6 +136,8 @@ class ApiTest {
                 .andExpect(jsonPath("$[0].action").value("RESTART"))
                 .andExpect(jsonPath("$[0].successes").value(1))
                 .andExpect(jsonPath("$[0].failures").value(1))
+                .andExpect(jsonPath("$[0].successStreak").value(0))
+                .andExpect(jsonPath("$[0].levelShift").value(1))
                 .andExpect(jsonPath("$[1].action").value("SCALE_OUT"))
                 .andExpect(jsonPath("$[1].updatedAt").value(nullValue()));
     }

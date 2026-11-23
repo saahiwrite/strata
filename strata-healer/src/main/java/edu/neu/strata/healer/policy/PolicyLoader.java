@@ -29,10 +29,12 @@ public final class PolicyLoader {
     public static final String DEFAULT_RESOURCE = "policy.yaml";
 
     private static final Set<String> TOP_LEVEL_KEYS =
-            Set.of("environment", "weights", "thresholds", "environments", "actions", "allowList");
+            Set.of("environment", "weights", "thresholds", "environments", "actions", "allowList", "autonomy");
     private static final Set<String> THRESHOLD_KEYS = Set.of("l1From", "l2From", "l3From");
     private static final Set<String> ACTION_KEYS = Set.of("blastRadius", "reversibility", "minLevel");
     private static final Set<String> ALLOW_LIST_KEYS = Set.of("actions", "targets");
+    private static final Set<String> AUTONOMY_KEYS =
+            Set.of("promoteAfter", "maxPromotion", "demoteOnFailure", "maxDemotion");
 
     /** Loads the policy bundled on the classpath. */
     public Policy loadDefault() {
@@ -133,7 +135,26 @@ public final class PolicyLoader {
                 ? AllowList.NONE
                 : allowList(map(doc.get("allowList"), "allowList"));
 
-        return new Policy(environment, weights, thresholds, environments, actions, allowList);
+        return new Policy(environment, weights, thresholds, environments, actions, allowList, autonomy(doc));
+    }
+
+    // autonomy: earned-autonomy rules; each key is optional and falls back to AutonomyRules.DEFAULT
+    private static AutonomyRules autonomy(Map<String, Object> doc) {
+        if (doc.get("autonomy") == null) {
+            return AutonomyRules.DEFAULT;
+        }
+        Map<String, Object> yaml = map(doc.get("autonomy"), "autonomy");
+        checkKeys(yaml, AUTONOMY_KEYS, "autonomy");
+        AutonomyRules d = AutonomyRules.DEFAULT;
+        return new AutonomyRules(
+                intOr(yaml, "promoteAfter", d.promoteAfter()),
+                intOr(yaml, "maxPromotion", d.maxPromotion()),
+                intOr(yaml, "demoteOnFailure", d.demoteOnFailure()),
+                intOr(yaml, "maxDemotion", d.maxDemotion()));
+    }
+
+    private static int intOr(Map<String, Object> yaml, String key, int fallback) {
+        return yaml.get(key) == null ? fallback : integer(yaml.get(key), "autonomy." + key);
     }
 
     private static AllowList allowList(Map<String, Object> yaml) {

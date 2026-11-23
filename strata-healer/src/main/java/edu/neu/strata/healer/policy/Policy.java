@@ -15,6 +15,7 @@ import java.util.Objects;
  * @param environments risk (0.0-1.0) of each known environment
  * @param actions      risk values of each action the policy knows
  * @param allowList    the actions and targets STRATA may ever run (FR4)
+ * @param autonomy     how each action's level moves with its results (FR10)
  */
 public record Policy(
         String environment,
@@ -22,7 +23,8 @@ public record Policy(
         Thresholds thresholds,
         Map<String, Double> environments,
         Map<ActionType, ActionPolicy> actions,
-        AllowList allowList) {
+        AllowList allowList,
+        AutonomyRules autonomy) {
 
     /** The weights must add up to this, so the score is 0-100. */
     public static final int TOTAL_WEIGHT = 100;
@@ -59,6 +61,18 @@ public record Policy(
 
         actions = actions == null || actions.isEmpty() ? Map.of() : Map.copyOf(new EnumMap<>(actions));
         allowList = allowList == null ? AllowList.NONE : allowList;
+        autonomy = autonomy == null ? AutonomyRules.DEFAULT : autonomy;
+    }
+
+    /** A policy with the default earned-autonomy rules ({@link AutonomyRules#DEFAULT}). */
+    public Policy(
+            String environment,
+            Map<RiskFactor, Integer> weights,
+            Thresholds thresholds,
+            Map<String, Double> environments,
+            Map<ActionType, ActionPolicy> actions,
+            AllowList allowList) {
+        this(environment, weights, thresholds, environments, actions, allowList, AutonomyRules.DEFAULT);
     }
 
     /** A policy without an allow-list (so nothing may run); handy for scoring-only tests. */
@@ -68,7 +82,7 @@ public record Policy(
             Thresholds thresholds,
             Map<String, Double> environments,
             Map<ActionType, ActionPolicy> actions) {
-        this(environment, weights, thresholds, environments, actions, AllowList.NONE);
+        this(environment, weights, thresholds, environments, actions, AllowList.NONE, AutonomyRules.DEFAULT);
     }
 
     public int weight(RiskFactor factor) {

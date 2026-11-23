@@ -6,10 +6,16 @@ package edu.neu.strata.healer.policy;
  *
  * @param successes recent runs that recovered the service
  * @param failures  recent runs that didn't
+ * @param levelShift the action's earned-autonomy shift (see {@link AutonomyRules}); 0 = none
  */
-public record ActionHistory(int successes, int failures) {
+public record ActionHistory(int successes, int failures, int levelShift) {
 
     public static final ActionHistory NONE = new ActionHistory(0, 0);
+
+    /** A history with no earned-autonomy shift. */
+    public ActionHistory(int successes, int failures) {
+        this(successes, failures, 0);
+    }
 
     public ActionHistory {
         if (successes < 0 || failures < 0) {
