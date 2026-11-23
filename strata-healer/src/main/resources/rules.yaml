@@ -12,3 +12,17 @@ rules:
     alertName: ServiceDown
     action: RESTART
     confidence: 0.9
+
+  - id: high-latency-scale-out
+    alertName: HighLatency
+    action: SCALE_OUT
+    confidence: 0.8
+
+  # a service that errors right after it was (re)started most likely got a bad release
+  - id: error-rate-after-deploy-rollback
+    alertName: HighErrorRate
+    logContains:
+      - Started OrderServiceApplication
+      - Started InventoryServiceApplication
+    action: ROLLBACK
+    confidence: 0.8

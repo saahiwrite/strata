@@ -5,12 +5,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import edu.neu.strata.healer.model.ActionType;
 import edu.neu.strata.healer.model.Diagnosis;
+import edu.neu.strata.healer.policy.Policy;
 import edu.neu.strata.healer.policy.PolicyLoader;
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
 class ActionValidatorTest {
 
-    /** The bundled policy: RESTART only, on order-service / inventory-service and their Compose containers. */
+    /** The bundled policy: restart, scale out and rollback, on order-service / inventory-service and their Compose containers. */
     private final ActionValidator validator = new ActionValidator(new PolicyLoader().loadDefault());
 
     private static Diagnosis propose(ActionType action, String target) {
@@ -24,8 +27,18 @@ class ActionValidatorTest {
     }
 
     @Test
-    void rejectsActionsThatArentAllowListed() {
-        ValidationResult result = validator.validate(propose(ActionType.ROLLBACK, "order-service"));
+    void allowsTheBundledScaleOutAndRollback() {
+        assertThat(validator.validate(propose(ActionType.SCALE_OUT, "strata-order-service-1")).allowed()).isTrue();
+        assertThat(validator.validate(propose(ActionType.ROLLBACK, "strata-order-service-1")).allowed()).isTrue();
+    }
+
+    @Test
+    void rejectsActionsThatArentAllowListed() throws Exception {
+        String yaml = new String(getClass().getResourceAsStream("/policy.yaml").readAllBytes(), StandardCharsets.UTF_8)
+                .replace("    - SCALE_OUT\n    - ROLLBACK\n", "");
+        Policy restartOnly = new PolicyLoader().load(new ByteArrayInputStream(yaml.getBytes(StandardCharsets.UTF_8)), "restart-only");
+
+        ValidationResult result = new ActionValidator(restartOnly).validate(propose(ActionType.ROLLBACK, "order-service"));
 
         assertThat(result.allowed()).isFalse();
         assertThat(result.reason()).isEqualTo("action ROLLBACK is not on the allow-list");
