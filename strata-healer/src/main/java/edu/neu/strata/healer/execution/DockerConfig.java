@@ -19,6 +19,7 @@ public class DockerConfig {
                 .dockerHost(config.getDockerHost())
                 .sslConfig(config.getSSLConfig())
                 .build();
-        return DockerClientImpl.getInstance(config, httpClient);
+        // a new connection per call: docker-proxy drops idle ones (see FreshConnectionDockerHttpClient)
+        return DockerClientImpl.getInstance(config, new FreshConnectionDockerHttpClient(httpClient));
     }
 }
