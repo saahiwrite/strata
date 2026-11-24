@@ -36,3 +36,24 @@ scrape_configs:
         labels:
           service: inventory-service
           container: strata-inventory-service-1
+
+  # Nginx, the entry point in front of both services (#45, S18). Prometheus can't
+  # scrape Nginx itself, so the blackbox exporter probes /nginx-health and Prometheus
+  # records probe_success. The labels are the same kind the healer reads from every
+  # alert; nginx is not on the allow-list, so the healer only hands it to a human.
+  - job_name: gateway
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets: ["http://nginx:8080/nginx-health"]
+        labels:
+          service: nginx
+          container: strata-nginx-1
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

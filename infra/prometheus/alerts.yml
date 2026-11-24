@@ -67,3 +67,16 @@ groups:
         annotations:
           summary: "{{ $labels.service }} heap is almost full"
           description: "{{ $labels.container }} is using {{ $value | humanizePercentage }} of its heap."
+
+      # Nginx stopped answering /nginx-health for 15s (scenario S18).
+      # Same guard as ServiceDown: only for a gateway that was up in the last
+      # 10 minutes, so it doesn't fire while the stack is still starting.
+      # STRATA opens an incident but never acts on it: nginx is not a heal target.
+      - alert: GatewayDown
+        expr: probe_success{job="gateway"} == 0 and max_over_time(probe_success{job="gateway"}[10m]) == 1
+        for: 15s
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service }} (gateway) is down"
+          description: "{{ $labels.instance }} has not answered for 15s. Every request to the services goes through it."

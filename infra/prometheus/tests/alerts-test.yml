@@ -170,3 +170,39 @@ tests:
             exp_annotations:
               summary: "order-service heap is almost full"
               description: "strata-order-service-1 is using 89.84% of its heap."
+
+  # Gateway: Nginx stops answering at 30s -> GatewayDown pending, then firing after 15s.
+  - interval: 5s
+    input_series:
+      - series: 'probe_success{job="gateway", instance="http://nginx:8080/nginx-health", service="nginx", container="strata-nginx-1"}'
+        values: '1 1 1 1 1 1 0 0 0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 40s
+        alertname: GatewayDown
+        exp_alerts: []
+      - eval_time: 50s
+        alertname: GatewayDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: gateway
+              instance: http://nginx:8080/nginx-health
+              service: nginx
+              container: strata-nginx-1
+            exp_annotations:
+              summary: "nginx (gateway) is down"
+              description: "http://nginx:8080/nginx-health has not answered for 15s. Every request to the services goes through it."
+      # The services' own ServiceDown rule doesn't fire for the gateway.
+      - eval_time: 50s
+        alertname: ServiceDown
+        exp_alerts: []
+
+  # Gateway that never came up (stack still starting): no alert.
+  - interval: 5s
+    input_series:
+      - series: 'probe_success{job="gateway", instance="http://nginx:8080/nginx-health", service="nginx", container="strata-nginx-1"}'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: GatewayDown
+        exp_alerts: []
