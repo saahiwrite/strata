@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head th:replace="~{dashboard/fragments :: head(|STRATA incident #${incident.id}|)}"></head>
+<body>
+<header th:replace="~{dashboard/fragments :: header}"></header>
+<main>
+    <section>
+        <h2>
+            <span th:text="|Incident #${incident.id}: ${incident.alertName} on ${incident.service}|">Incident</span>
+            <span class="badge" th:classappend="${incident.status}" th:text="${incident.status}">OPEN</span>
+        </h2>
+        <table>
+            <tr><th>Container</th><td class="mono" th:text="${incident.container}">c</td></tr>
+            <tr><th>Severity</th><td th:text="${incident.severity}">critical</td></tr>
+            <tr><th>Opened</th><td th:text="${fmt.time(incident.openedAt)}">t</td></tr>
+            <tr><th>Closed</th><td th:text="${fmt.time(incident.closedAt)}">t</td></tr>
+            <tr><th>Time to close</th><td th:text="${fmt.duration(incident.openedAt, incident.closedAt)}">15s</td></tr>
+        </table>
+    </section>
+
+    <section id="decisions">
+        <h2>Decisions</h2>
+        <p class="empty" th:if="${#lists.isEmpty(decisions)}">No action was proposed for this incident.</p>
+        <div class="table-wrap" th:unless="${#lists.isEmpty(decisions)}">
+            <table>
+                <thead><tr><th>Decided</th><th>Rule</th><th>Action</th><th>Target</th><th>Confidence</th>
+                    <th>Allowed</th><th>Risk</th><th>Factors</th><th>Level</th><th>Outcome</th></tr></thead>
+                <tbody>
+                <tr th:each="d, i : ${decisions}">
+                    <td class="muted" th:text="${fmt.time(d.decidedAt)}">t</td>
+                    <td th:text="${d.ruleId}">rule</td>
+                    <td th:text="${d.action}">RESTART</td>
+                    <td class="mono" th:text="${d.target}">c</td>
+                    <td th:text="${fmt.percent(d.confidence)}">90%</td>
+                    <td>
+                        <span th:if="${d.allowed}">yes</span>
+                        <span th:unless="${d.allowed}" class="badge REJECTED" th:text="|no: ${d.rejectionReason}|">no</span>
+                    </td>
+                    <td th:text="${d.riskScore != null} ? ${d.riskScore} : '—'">9</td>
+                    <td><ul class="factors"><li th:each="f : ${factors[i.index]}" th:text="|${f.key} ${f.value}|">f</li></ul></td>
+                    <td><span th:if="${d.autonomyLevel != null}" class="badge" th:classappend="${d.autonomyLevel}"
+                              th:text="${fmt.level(d.autonomyLevel)}">L0</span></td>
+                    <td><span class="badge" th:classappend="${d.outcome}" th:text="${d.outcome}">RECOVERED</span></td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section id="audit-entries">
+        <h2>Audit entries</h2>
+        <p class="empty" th:if="${#lists.isEmpty(audit)}">No audit entries.</p>
+        <div class="table-wrap" th:unless="${#lists.isEmpty(audit)}">
+            <table>
+                <thead><tr><th>#</th><th>Recorded</th><th>Event</th><th>Detail</th><th>Hash</th></tr></thead>
+                <tbody>
+                <tr th:each="a : ${audit}">
+                    <td th:text="${a.seq}">1</td>
+                    <td class="muted" th:text="${fmt.time(a.recordedAt)}">t</td>
+                    <td th:text="${a.eventType}">DIAGNOSIS</td>
+                    <td class="mono" th:text="${a.payload}">{}</td>
+                    <td class="mono muted" th:text="${#strings.substring(a.hash, 0, 12)} + '…'">abc</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+</body>
+</html>

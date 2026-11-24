@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head th:fragment="head(title)">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${title}">STRATA</title>
+    <link rel="stylesheet" th:href="@{/dashboard/dashboard.css}">
+</head>
+<body>
+<header th:fragment="header">
+    <h1><a th:href="@{/dashboard}">STRATA</a></h1>
+    <span class="sub">Self-healing with Trust and Risk-Adaptive Autonomy</span>
+    <nav>
+        <a th:href="@{/dashboard}">Dashboard</a>
+        <a th:href="@{/api/incidents}">Incidents API</a>
+        <a th:href="@{/api/audit/verify}">Audit chain</a>
+    </nav>
+</header>
+</body>
+</html>

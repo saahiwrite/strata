@@ -160,8 +160,13 @@ services:
   # Target services that STRATA heals. Build the jars first (mvn clean package -DskipTests).
   # No restart policy on purpose: when a service crashes it stays down until the healer
   # restarts it. Their ports are not published; reach them through Nginx on :8080.
+  # The image tag is normally 1.0. `scenarios/inject.sh deploy order-service <tag>` sets
+  # ORDER_SERVICE_TAG to swap in another release (S14's bad deployment) without rebuilding.
   order-service:
-    build: ./target-services/order-service
+    image: strata/order-service:${ORDER_SERVICE_TAG:-1.0}
+    build:
+      context: ./target-services/order-service
+      target: release
     expose:
       - "8080"
 

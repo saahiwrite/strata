@@ -24,12 +24,14 @@ The folders follow the components in our Phase 1 system design.
 ```
 strata/
   target-services/
+    chaos-kit/            Shared library: the /chaos/* failure switches, auto-configured into both services
     order-service/        Spring Boot service that STRATA heals (metrics, JSON logs, /chaos/* failure switches)
     inventory-service/    Second Spring Boot service, behind Nginx with order-service
   strata-healer/          The STRATA healer (Spring Boot, Java 21)
     src/main/java/edu/neu/strata/healer/
       model/              Shared types between the stages: Alert, Diagnosis, ActionType, AutonomyLevel, RiskAssessment, ExecutionResult
       api/                REST endpoints: Alertmanager webhook, incidents and audit API
+      dashboard/          Thymeleaf dashboard (/dashboard): incidents, pending approvals with Approve/Deny, trust records, audit chain
       detection/          Turns incoming alerts into incidents
       diagnosis/          Rule matcher (rules.yaml) and Loki log client; LLM diagnosis later
       validation/         Action allow-list; rejects unknown actions and targets
@@ -100,6 +102,14 @@ curl http://localhost:9000/api/audit/verify
 
 On a fresh clone the healer restarted order-service about 25 s after the crash, and the incident showed `RESOLVED` about 20 s after that.
 
+**Both use cases in one command:**
+
+```bash
+./scenarios/demo.sh
+```
+
+It starts the stack if it isn't running, then runs S01 (crash → automatic restart → `RESOLVED`) and S14 (bad deployment → rollback proposed at L2 → you click **Approve** on http://localhost:9000/dashboard → rolled back to `1.0` → `RESOLVED`), printing each incident's audit trail. Every step says what it is waiting for and stops with a clear message if it times out. It needs Docker, curl and python3, and takes about 3 minutes plus the time you take to approve.
+
 On macOS with Colima instead of Docker Desktop, clone the repo somewhere under your home folder (Colima only shares your home folder with containers), and `mvn verify` needs `DOCKER_HOST=unix://$HOME/.colima/default/docker.sock` and `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock` for the integration test.
 
 **Environment variables** (`.env.example`):
@@ -137,7 +147,7 @@ All of these run with `mvn verify` from the repo root, and in GitHub Actions on 
 
 - **Healer unit tests (JUnit 5):** the shared types, `PolicyLoaderTest`, `RiskScorerTest`, `PolicyConfigTest`, `AllowListTest`, `ActionValidatorTest`, `HashChainTest`, `AuditLogServiceTest` (tampering, deleted entries, forks, 40 concurrent appends), `SchemaMigrationTest`, `AuditConfigTest`, `TrustRecordTest`, `TrustServiceTest`, `ApiTest`, `AlertWebhookControllerTest`, `AlertParserTest`, `IncidentServiceTest`, `RuleMatcherTest`, `CooldownGuardTest`, `DockerActionExecutorTest`, `LokiLogClientTest`, `HealingOrchestratorTest`, `PrometheusClientTest`, `PrometheusRecoveryVerifierTest`, `VerificationConfigTest`. The persistence tests run the real Flyway migrations on in-memory H2 in PostgreSQL mode.
 - **Integration test:** `CrashRecoveryIT` (Testcontainers) kills a real container, posts a `ServiceDown` alert and checks that the healer restarts it, resolves the incident and keeps the audit chain valid, on real PostgreSQL.
-- **Target services:** 23 unit and MockMvc tests in each of `order-service` and `inventory-service` (API, Prometheus metrics, JSON logging, every chaos switch and its input validation), including `ChaosControllerTest`.
+- **Target services:** 18 tests in `chaos-kit` for every failure switch and its input validation (`ChaosControllerTest`, `ChaosStateTest`, `MemoryLeakTest`, `ChaosDisabledTest`), 15 in `order-service` and 8 in `inventory-service` (API, Prometheus metrics, JSON logging, that the switches are wired in, and order-service's broken release for S14), and 13 for the dashboard in the healer (`DashboardControllerTest`, `DashboardFormatTest`). Run with `mvn verify` at the root.
 - **Monitoring config:** promtool unit tests for the alert rules (`infra/prometheus/tests/alerts-test.yml`); CI also checks the Prometheus and Alertmanager configs and `docker-compose.yml`.
 
 ## Next Steps (Phase 3)
