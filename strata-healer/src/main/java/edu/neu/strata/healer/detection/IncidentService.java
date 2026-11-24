@@ -27,6 +27,10 @@ public class IncidentService {
         return store.findOpen(service, alertName);
     }
 
+    public Optional<IncidentStatus> status(long id) {
+        return store.statusOf(id);
+    }
+
     public void resolve(long id) {
         store.close(id, IncidentStatus.RESOLVED, Instant.now());
     }

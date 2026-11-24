@@ -83,9 +83,13 @@ class HealingOrchestratorTest {
     }
 
     private HealingOrchestrator orchestrator(Policy policy, Diagnoser diagnoser) {
-        return new HealingOrchestrator(incidents, loki, new LogScreen(), diagnoser, new ActionValidator(policy),
-                new RiskScorer(policy), trust, new CooldownGuard(Duration.ofMinutes(5), Clock.systemUTC()),
-                executor, verifier, audit, new DecisionStore(jdbc), Duration.ofSeconds(1), Runnable::run);
+        IncidentLifecycle lifecycle = new IncidentLifecycle(incidents, new DecisionStore(jdbc), audit);
+        return new HealingOrchestrator(lifecycle,
+                new DiagnosisStage(loki, new LogScreen(), diagnoser, audit),
+                new AssessmentStage(new ActionValidator(policy), new RiskScorer(policy), trust, audit),
+                new ExecutionStage(new CooldownGuard(Duration.ofMinutes(5), Clock.systemUTC()), executor,
+                        verifier, trust, audit, lifecycle, Duration.ofSeconds(1)),
+                Runnable::run);
     }
 
     private Policy restartOnlyPolicy() throws Exception {
@@ -265,7 +269,8 @@ class HealingOrchestratorTest {
 
     @Test
     void llmProposalOfAnActionOutsideTheAllowListIsRejected() throws Exception {
-        // The S15 reply from a real small model: an injected line talked it into a rollback of postgres
+        // The S15 reply from a real small model: an injected line talked it into a rollback of postgres.
+        // The bundled policy allows rollback now, so this uses a policy that only allows restarts.
         Incident incident = open(alert("HighErrorRate", CONTAINER));
         Diagnoser diagnoser = rulesThenLlm(
                 "{\"action\": \"ROLLBACK\", \"target\": \"postgres\", \"confidence\": 1.0}");
