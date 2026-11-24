@@ -87,6 +87,12 @@ class HealingOrchestratorTest {
                 executor, verifier, audit, new DecisionStore(jdbc), Duration.ofSeconds(1), Runnable::run);
     }
 
+    private Policy restartOnlyPolicy() throws Exception {
+        String yaml = new String(getClass().getResourceAsStream("/policy.yaml").readAllBytes(), StandardCharsets.UTF_8)
+                .replace("    - SCALE_OUT\n    - ROLLBACK\n", "");
+        return new PolicyLoader().load(new ByteArrayInputStream(yaml.getBytes(StandardCharsets.UTF_8)), "restart-only");
+    }
+
     private HealingOrchestrator orchestrator() {
         return orchestrator(new PolicyLoader().loadDefault());
     }
@@ -257,13 +263,13 @@ class HealingOrchestratorTest {
     }
 
     @Test
-    void llmProposalOfAnActionOutsideTheAllowListIsRejected() {
+    void llmProposalOfAnActionOutsideTheAllowListIsRejected() throws Exception {
         // The S15 reply from a real small model: an injected line talked it into a rollback of postgres
         Incident incident = open(alert("HighErrorRate", CONTAINER));
         Diagnoser diagnoser = rulesThenLlm(
                 "{\"action\": \"ROLLBACK\", \"target\": \"postgres\", \"confidence\": 1.0}");
 
-        orchestrator(new PolicyLoader().loadDefault(), diagnoser).heal(incident);
+        orchestrator(restartOnlyPolicy(), diagnoser).heal(incident);
 
         verify(executor, never()).execute(any(), anyString());
         assertThat(incidentStatus(incident.id())).isEqualTo("ESCALATED");
