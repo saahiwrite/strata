@@ -2,6 +2,7 @@ package edu.neu.strata.healer.execution;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -20,7 +21,9 @@ class DockerActionExecutorTest {
 
     private final DockerClient docker = mock(DockerClient.class);
     private final RestartContainerCmd restartCmd = mock(RestartContainerCmd.class);
-    private final DockerActionExecutor executor = new DockerActionExecutor(docker);
+    private final ScaleOutAction scaleOut = mock(ScaleOutAction.class);
+    private final RollbackAction rollback = mock(RollbackAction.class);
+    private final DockerActionExecutor executor = new DockerActionExecutor(docker, scaleOut, rollback);
 
     @Test
     void restartCallsDockerForTheContainer() {
@@ -44,10 +47,30 @@ class DockerActionExecutorTest {
     }
 
     @Test
-    void otherActionsAreNotSupportedYet() {
+    void scaleOutIsHandedToTheScaleOutAction() {
+        ExecutionResult expected = ExecutionResult.succeeded(ActionType.SCALE_OUT, "strata-order-service-1");
+        when(scaleOut.run("strata-order-service-1")).thenReturn(expected);
+
+        assertSame(expected, executor.execute(ActionType.SCALE_OUT, "strata-order-service-1"));
+        verify(rollback, never()).run("strata-order-service-1");
+    }
+
+    @Test
+    void rollbackIsHandedToTheRollbackAction() {
+        ExecutionResult expected = ExecutionResult.succeeded(ActionType.ROLLBACK, "strata-order-service-1");
+        when(rollback.run("strata-order-service-1")).thenReturn(expected);
+
+        assertSame(expected, executor.execute(ActionType.ROLLBACK, "strata-order-service-1"));
+        verify(scaleOut, never()).run("strata-order-service-1");
+    }
+
+    @Test
+    void anExceptionFromAnActionBecomesAFailedResult() {
+        when(rollback.run("strata-order-service-1")).thenThrow(new IllegalStateException("docker is down"));
+
         ExecutionResult result = executor.execute(ActionType.ROLLBACK, "strata-order-service-1");
 
         assertFalse(result.success());
-        verify(docker, never()).restartContainerCmd("strata-order-service-1");
+        assertEquals("docker is down", result.detail());
     }
 }

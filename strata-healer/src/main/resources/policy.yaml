@@ -59,6 +59,8 @@ diagnosis:
 allowList:
   actions:
     - RESTART
+    - SCALE_OUT
+    - ROLLBACK
   targets:
     - order-service
     - inventory-service

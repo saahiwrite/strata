@@ -171,10 +171,11 @@ class PolicyLoaderTest {
     }
 
     @Test
-    void bundledAllowListOnlyRestartsTheTargetServices() {
+    void bundledAllowListOnlyActsOnTheTargetServices() {
         AllowList allowList = loader.loadDefault().allowList();
 
-        assertThat(allowList.actions()).containsExactly(ActionType.RESTART);
+        assertThat(allowList.actions()).containsExactlyInAnyOrder(
+                ActionType.RESTART, ActionType.SCALE_OUT, ActionType.ROLLBACK);
         assertThat(allowList.allowsTarget("order-service")).isTrue();
         assertThat(allowList.allowsTarget("strata-inventory-service-1")).isTrue();
         assertThat(allowList.allowsTarget("postgres")).isFalse();
