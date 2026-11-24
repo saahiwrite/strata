@@ -23,6 +23,9 @@ import java.util.Map;
  * POST /chaos/slow?delayMs=2000  add that much latency to every request
  * POST /chaos/memory?mbPerSecond=10&maxMb=512
  *                                retain that much more heap every second, up to maxMb
+ * POST /chaos/log?message=...&errorRate=0.5
+ *                                log message at ERROR; with errorRate, also fail that fraction
+ *                                of requests, each logging the same message
  * POST /chaos/reset              turn every switch off
  * </pre>
  */
@@ -47,6 +50,7 @@ public class ChaosController {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("errorRate", state.errorRate());
         body.put("latencyMs", state.latencyMs());
+        body.put("plantedMessage", state.plantedMessage());
         body.put("memory", Map.of(
                 "active", memoryLeak.active(),
                 "mbPerSecond", memoryLeak.mbPerSecond(),
@@ -84,7 +88,26 @@ public class ChaosController {
         return status();
     }
 
-    @PostMapping("/reset")
+    /**
+     * The log switch, for scenarios that need log lines we control: text planted by an attacker
+     * (S15, S16) or an error no diagnosis rule knows (S17). The message is logged as is and never
+     * interpreted or executed. With {@code errorRate}, the error switch is turned on as well and
+     * every failed request logs the same message, so an alert fires with this line in Loki.
+     */
+    @PostMapping("/log")
+    public Map<String, Object> plantLog(@RequestParam String message,
+                                        @RequestParam(required = false) Double errorRate) {
+        ChaosState.checkMessage(message);
+        if (errorRate != null) {
+            state.setErrorRate(errorRate);
+            state.setPlantedMessage(message);
+        }
+        log.error("{}", message);
+        state.recordPlantedLine();
+        return status();
+    }
+
+        @PostMapping("/reset")
     public Map<String, Object> reset() {
         state.reset();
         memoryLeak.stop();

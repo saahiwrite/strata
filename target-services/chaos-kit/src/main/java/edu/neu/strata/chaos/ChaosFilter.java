@@ -52,9 +52,16 @@ public class ChaosFilter extends OncePerRequestFilter {
         }
         if (state.shouldFail()) {
             injectedErrors.increment();
-            log.error("Request failed: injected error path={} method={}",
-                    request.getRequestURI(), request.getMethod(),
-                    new IllegalStateException("Chaos error switch is on"));
+            String planted = state.plantedMessage();
+            if (planted != null) {
+                // The log switch's text is data: it is only ever logged, never parsed or run.
+                log.error("{}", planted);
+                state.recordPlantedLine();
+            } else {
+                log.error("Request failed: injected error path={} method={}",
+                        request.getRequestURI(), request.getMethod(),
+                        new IllegalStateException("Chaos error switch is on"));
+            }
             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
             response.getWriter().write("{\"error\":\"Internal Server Error\",\"reason\":\"chaos error switch\"}");
