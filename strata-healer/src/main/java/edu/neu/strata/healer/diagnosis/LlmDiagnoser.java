@@ -76,6 +76,12 @@ public class LlmDiagnoser implements Diagnoser {
         return diagnosis;
     }
 
+    /** Without the LLM there is nothing left: this diagnoser never answers. */
+    @Override
+    public Diagnoser withoutLlm() {
+        return (alert, logLines) -> Optional.empty();
+    }
+
     /** The question for the model. Log lines go in a fenced block and are trimmed, never interpreted. */
     static String userPrompt(Alert alert, List<String> logLines) {
         StringBuilder prompt = new StringBuilder()

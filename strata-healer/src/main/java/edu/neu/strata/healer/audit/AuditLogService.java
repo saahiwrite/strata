@@ -85,6 +85,11 @@ public class AuditLogService {
         return repository.findByIncident(incidentId);
     }
 
+    /** Every entry of one event type, oldest first. */
+    public List<AuditEntry> ofType(AuditEventType type) {
+        return repository.findByType(type);
+    }
+
     private String toJson(Object details) {
         try {
             return json.writeValueAsString(details);

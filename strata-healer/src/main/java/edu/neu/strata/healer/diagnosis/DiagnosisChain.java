@@ -32,6 +32,11 @@ public class DiagnosisChain implements Diagnoser {
         return Optional.empty();
     }
 
+    @Override
+    public Diagnoser withoutLlm() {
+        return new DiagnosisChain(diagnosers.stream().map(Diagnoser::withoutLlm).toList());
+    }
+
     /** The diagnosers in the order they are asked. */
     public List<Diagnoser> diagnosers() {
         return diagnosers;

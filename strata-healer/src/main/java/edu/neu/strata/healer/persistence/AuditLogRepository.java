@@ -68,6 +68,14 @@ public class AuditLogRepository {
                 .list();
     }
 
+    /** Every entry of one event type, oldest first. */
+    public List<AuditEntry> findByType(AuditEventType type) {
+        return jdbc.sql("SELECT " + COLUMNS + " FROM audit_log WHERE event_type = ? ORDER BY seq")
+                .param(type.name())
+                .query(AuditLogRepository::map)
+                .list();
+    }
+
     private static AuditEntry map(ResultSet rs, int row) throws SQLException {
         long incident = rs.getLong("incident_id");
         Long incidentId = rs.wasNull() ? null : incident;
