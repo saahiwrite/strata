@@ -31,6 +31,10 @@ Add `--spring.profiles.active=plain-logs` for human-readable logs instead of JSO
 
 Each service has a `Dockerfile` that copies `target/<service>.jar`, so build the jar before `docker build`. The image runs with `-XX:+ExitOnOutOfMemoryError`, so the memory switch ends in a real crash once the heap is full.
 
+## Releases (order-service)
+
+`order-service` reports its release in `service_release{version,broken}`. A broken release (`strata.release.broken=true`, baked into the `1.1-broken` image) fails most business requests, for the bad-deployment scenario S14. See [`scenarios/README.md`](../scenarios/README.md#bad-deployment-s14).
+
 ## Log format
 
 One JSON object per line, for example:
