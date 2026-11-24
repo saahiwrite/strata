@@ -83,3 +83,90 @@ tests:
             exp_annotations:
               summary: "order-service error rate is high"
               description: "50% of requests to strata-order-service-1 returned 5xx over the last minute."
+
+  # Latency. order-service: every request takes 2s (falls in the 2.5s bucket) -> fires.
+  # inventory-service: every request takes under 0.1s -> stays quiet.
+  # Slow /chaos/* calls are ignored.
+  - interval: 5s
+    input_series:
+      - series: 'http_server_requests_seconds_bucket{job="order-service", service="order-service", container="strata-order-service-1", uri="/orders", le="0.1"}'
+        values: '0x30'
+      - series: 'http_server_requests_seconds_bucket{job="order-service", service="order-service", container="strata-order-service-1", uri="/orders", le="1.0"}'
+        values: '0x30'
+      - series: 'http_server_requests_seconds_bucket{job="order-service", service="order-service", container="strata-order-service-1", uri="/orders", le="2.5"}'
+        values: '0+10x30'
+      - series: 'http_server_requests_seconds_bucket{job="order-service", service="order-service", container="strata-order-service-1", uri="/orders", le="+Inf"}'
+        values: '0+10x30'
+      - series: 'http_server_requests_seconds_bucket{job="inventory-service", service="inventory-service", container="strata-inventory-service-1", uri="/inventory", le="0.1"}'
+        values: '0+10x30'
+      - series: 'http_server_requests_seconds_bucket{job="inventory-service", service="inventory-service", container="strata-inventory-service-1", uri="/inventory", le="1.0"}'
+        values: '0+10x30'
+      - series: 'http_server_requests_seconds_bucket{job="inventory-service", service="inventory-service", container="strata-inventory-service-1", uri="/inventory", le="2.5"}'
+        values: '0+10x30'
+      - series: 'http_server_requests_seconds_bucket{job="inventory-service", service="inventory-service", container="strata-inventory-service-1", uri="/inventory", le="+Inf"}'
+        values: '0+10x30'
+      - series: 'http_server_requests_seconds_bucket{job="inventory-service", service="inventory-service", container="strata-inventory-service-1", uri="/chaos/slow", le="2.5"}'
+        values: '0+50x30'
+      - series: 'http_server_requests_seconds_bucket{job="inventory-service", service="inventory-service", container="strata-inventory-service-1", uri="/chaos/slow", le="+Inf"}'
+        values: '0+50x30'
+    alert_rule_test:
+      # Slow for less than 30s: still pending.
+      - eval_time: 20s
+        alertname: HighLatency
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: HighLatency
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: order-service
+              container: strata-order-service-1
+            exp_annotations:
+              summary: "order-service is responding slowly"
+              description: "p95 response time of strata-order-service-1 is 2.425s over the last minute."
+
+  # No traffic at all: the quantile is NaN, so no latency alert.
+  - interval: 5s
+    input_series:
+      - series: 'http_server_requests_seconds_bucket{job="order-service", service="order-service", container="strata-order-service-1", uri="/orders", le="+Inf"}'
+        values: '5x30'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: HighLatency
+        exp_alerts: []
+
+  # Memory. Heap max is 512 MiB (old gen); eden and survivor report -1.
+  # order-service: 460 MiB used (~90%) -> fires after 15s.
+  # inventory-service: 200 MiB used (~39%) -> stays quiet.
+  # Non-heap memory is ignored.
+  - interval: 5s
+    input_series:
+      - series: 'jvm_memory_max_bytes{job="order-service", service="order-service", container="strata-order-service-1", area="heap", id="G1 Old Gen"}'
+        values: '536870912x30'
+      - series: 'jvm_memory_max_bytes{job="order-service", service="order-service", container="strata-order-service-1", area="heap", id="G1 Eden Space"}'
+        values: '-1x30'
+      - series: 'jvm_memory_used_bytes{job="order-service", service="order-service", container="strata-order-service-1", area="heap", id="G1 Old Gen"}'
+        values: '377487360x30'
+      - series: 'jvm_memory_used_bytes{job="order-service", service="order-service", container="strata-order-service-1", area="heap", id="G1 Eden Space"}'
+        values: '104857600x30'
+      - series: 'jvm_memory_used_bytes{job="order-service", service="order-service", container="strata-order-service-1", area="nonheap", id="Metaspace"}'
+        values: '536870912x30'
+      - series: 'jvm_memory_max_bytes{job="inventory-service", service="inventory-service", container="strata-inventory-service-1", area="heap", id="G1 Old Gen"}'
+        values: '536870912x30'
+      - series: 'jvm_memory_used_bytes{job="inventory-service", service="inventory-service", container="strata-inventory-service-1", area="heap", id="G1 Old Gen"}'
+        values: '209715200x30'
+    alert_rule_test:
+      # Full for less than 15s: still pending.
+      - eval_time: 10s
+        alertname: HighMemory
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: HighMemory
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: order-service
+              container: strata-order-service-1
+            exp_annotations:
+              summary: "order-service heap is almost full"
+              description: "strata-order-service-1 is using 89.84% of its heap."
