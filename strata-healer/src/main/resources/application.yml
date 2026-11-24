@@ -12,6 +12,15 @@ strata:
     seconds: 60
   verify:
     timeout-seconds: 30
+  # LLM diagnosis (FR3): only for alerts no rule in rules.yaml matches. Off unless enabled
+  # (Docker Compose turns it on); when off or unreachable, such incidents go to a human.
+  llm:
+    enabled: ${STRATA_LLM_ENABLED:false}
+    url: ${OLLAMA_URL:http://ollama:11434}
+    model: ${STRATA_LLM_MODEL:qwen2.5:0.5b}
+    timeout-seconds: 60
+    # LLM proposals never count as more than 60% sure, so they always score riskier than a rule
+    max-confidence: 0.6
   scale:
     max-instances: 3
   canary:

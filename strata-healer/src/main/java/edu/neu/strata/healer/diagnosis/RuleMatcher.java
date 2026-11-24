@@ -14,8 +14,9 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import edu.neu.strata.healer.model.Alert;
 import edu.neu.strata.healer.model.Diagnosis;
 
+/** Diagnoses with the rules in {@code rules.yaml}: top to bottom, the first match wins. */
 @Component
-public class RuleMatcher {
+public class RuleMatcher implements Diagnoser {
 
     private final List<Rule> rules;
 
@@ -25,6 +26,11 @@ public class RuleMatcher {
 
     public RuleMatcher(List<Rule> rules) {
         this.rules = rules;
+    }
+
+    @Override
+    public Optional<Diagnosis> diagnose(Alert alert, List<String> logLines) {
+        return match(alert, logLines);
     }
 
     public Optional<Diagnosis> match(Alert alert, List<String> logLines) {

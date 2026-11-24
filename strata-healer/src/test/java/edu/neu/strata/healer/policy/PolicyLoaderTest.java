@@ -190,4 +190,32 @@ class PolicyLoaderTest {
         assertRejected(VALID + "allowList:\n  targets: ['*']\n", "must be a container or service name");
         assertRejected(VALID + "allowList: [RESTART]\n", "allowList must be a mapping");
     }
+
+    @Test
+    void llmFloorDefaultsToApprovalWhenNotSet() {
+        assertThat(load(VALID).llmMinLevel()).isEqualTo(edu.neu.strata.healer.model.AutonomyLevel.L2_APPROVAL);
+    }
+
+    @Test
+    void readsTheLlmFloor() {
+        Policy policy = load(VALID + """
+                diagnosis:
+                  llm:
+                    minLevel: L1_AUTO_UNDO
+                """);
+
+        assertThat(policy.llmMinLevel()).isEqualTo(edu.neu.strata.healer.model.AutonomyLevel.L1_AUTO_UNDO);
+    }
+
+    @Test
+    void rejectsUnknownKeysAndLevelsInTheDiagnosisSection() {
+        assertRejected(VALID + "diagnosis:\n  gpt: {}\n", "gpt");
+        assertRejected(VALID + "diagnosis:\n  llm:\n    maxLevel: L0_AUTO\n", "maxLevel");
+        assertRejected(VALID + "diagnosis:\n  llm:\n    minLevel: L9\n", "L9");
+    }
+
+    @Test
+    void bundledPolicyMakesAnEngineerApproveLlmProposals() {
+        assertThat(loader.loadDefault().llmMinLevel()).isEqualTo(edu.neu.strata.healer.model.AutonomyLevel.L2_APPROVAL);
+    }
 }

@@ -44,6 +44,13 @@ actions:
     reversibility: 0.8     # goes back to an older image; data written since may not fit it
     minLevel: L2_APPROVAL  # secondary use case: an engineer approves every rollback
 
+# Diagnoses from the local LLM (used only when no rule matches). The LLM proposes; the policy decides.
+# minLevel is the least cautious level an LLM proposal may ever get, whatever its score
+# (L2_APPROVAL = an engineer approves every LLM-proposed action). Default: L2_APPROVAL.
+diagnosis:
+  llm:
+    minLevel: L2_APPROVAL
+
 # The only actions STRATA may run, and the only containers/services it may run them
 # on (FR4). Anything else a diagnosis proposes is rejected before it is scored.
 # A target is an exact name, or a name ending in * (matches every name starting with

@@ -30,4 +30,10 @@ class DiagnosisTest {
         assertThrows(NullPointerException.class, () -> new Diagnosis("crash", null, "order-service", 0.9));
         assertThrows(IllegalArgumentException.class, () -> new Diagnosis("crash", ActionType.RESTART, " ", 0.9));
     }
+
+    @Test
+    void ruleIsTheDefaultSourceAndSourceIsRequired() {
+        assertEquals(DiagnosisSource.RULE, new Diagnosis("r", ActionType.RESTART, "t", 0.5).source());
+        assertThrows(NullPointerException.class, () -> new Diagnosis("r", ActionType.RESTART, "t", 0.5, null));
+    }
 }
