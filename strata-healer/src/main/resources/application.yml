@@ -27,3 +27,6 @@ strata:
     verify-timeout-seconds: 60
   rollback:
     previous-image-label: strata.previous-image
+  approval:
+    timeout-minutes: 30
+    check-interval-ms: 30000
