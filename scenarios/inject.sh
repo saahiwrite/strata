@@ -12,6 +12,8 @@
 #   ./scenarios/inject.sh reset   <service|all>
 #   ./scenarios/inject.sh status  <service|all>
 #   ./scenarios/inject.sh traffic <service> [requests]             (default 200)
+#   ./scenarios/inject.sh spike   [peakVUs] [hold]                 (k6 load on order-service through
+#                                 Nginx; default 200 users for 3m; needs Docker)
 #   ./scenarios/inject.sh deploy  order-service <tag>              (e.g. 1.1-broken, or 1.0 to go back;
 #                                 needs Docker and the stack started with docker compose)
 #   ./scenarios/inject.sh scenario <ID>                            (e.g. S01, see scenarios/README.md)
@@ -32,6 +34,8 @@ INVENTORY_URL="${INVENTORY_SERVICE_URL:-$GATEWAY/inventory-service}"
 SERVICES=(order-service inventory-service)
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ORDER_IMAGE_REPO="strata/order-service"
+K6_IMAGE="grafana/k6:0.54.0"
+COMPOSE_NETWORK="strata_default"
 GOOD_TAG="1.0"
 
 die() {
@@ -178,6 +182,22 @@ wait_healthy() {
     die "$service did not become healthy within 2 minutes ($url)"
 }
 
+# Traffic spike on order-service (scenario S13): k6 in Docker on the Compose network, so it
+# reaches Nginx by name and nothing needs installing. See scenarios/load/spike.js.
+cmd_spike() {
+    local vus="${1:-200}" hold="${2:-3m}"
+    [[ "$vus" =~ ^[0-9]+$ ]] || die "peakVUs must be a whole number"
+    [[ "$hold" =~ ^[0-9]+[smh]$ ]] || die "hold must look like 90s, 3m or 1h"
+    command -v docker >/dev/null || die "spike needs the docker CLI"
+    docker network inspect "$COMPOSE_NETWORK" >/dev/null 2>&1 \
+        || die "network $COMPOSE_NETWORK not found; start the stack with docker compose up first"
+    echo "Spike: $vus users on order-service for $hold (plus 30s of ramp)" >&2
+    docker run --rm --network "$COMPOSE_NETWORK" \
+        -v "$REPO_ROOT/scenarios/load:/scripts:ro" \
+        -e BASE_URL=http://nginx:8080 -e PEAK_VUS="$vus" -e HOLD="$hold" \
+        "$K6_IMAGE" run --quiet /scripts/spike.js
+}
+
 # Swaps the running order-service container to another image tag (scenario S14).
 # A tag other than 1.0 is built from the same jar as an "upgrade": the image records the image
 # it replaced in the strata.previous-image label, which STRATA's ROLLBACK action goes back to.
@@ -244,6 +264,7 @@ cmd_scenario() {
         S10) cmd_slow order-service 1500; cmd_error order-service 0.5; cmd_traffic order-service 100 ;;
         S11) cmd_memory order-service 20 4096 ;;
         S12) cmd_memory inventory-service 5 256 ;;
+        S13) cmd_spike ;;
         # Slow, steady traffic on purpose: HighErrorRate needs it to last over 30 s, and the
         # healer's rollback rule looks for the start-up line ("Started OrderServiceApplication")
         # among the newest 50 log lines, which a burst of failing requests would push out.
@@ -251,8 +272,8 @@ cmd_scenario() {
         S15) cmd_log order-service "$S15_LINE" 0.5; cmd_traffic order-service 300 ;;
         S16) cmd_log order-service "$S16_LINE" 0.5; cmd_traffic order-service 300 ;;
         S17) cmd_log inventory-service "$S17_LINE" 0.5; cmd_traffic inventory-service 300 ;;
-        S1[3-8])
-            die "$id needs a Phase 3 feature and cannot be injected yet (see scenarios/README.md)" ;;
+        S18)
+            die "S18 is injected with: docker compose stop nginx (see scenarios/README.md)" ;;
         "") die "scenario needs an ID, e.g. S01" ;;
         *) die "unknown scenario '$1' (see ./scenarios/inject.sh list)" ;;
     esac
@@ -277,6 +298,7 @@ main() {
         reset|status)
             for_each_service "${1:-all}" "cmd_$cmd"
             ;;
+        spike) cmd_spike "$@" ;;
         scenario) cmd_scenario "$@" ;;
         list) cmd_list ;;
         -h|--help|help) usage 0 ;;
