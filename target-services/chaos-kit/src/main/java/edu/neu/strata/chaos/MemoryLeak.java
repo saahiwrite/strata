@@ -1,11 +1,10 @@
-package edu.neu.strata.inventory.chaos;
+package edu.neu.strata.chaos;
 
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -16,7 +15,6 @@ import java.util.List;
  * leak, which shows up in {@code jvm_memory_used_bytes}; with a large enough cap the service
  * eventually fails with OutOfMemoryError. Reset drops the references so GC can reclaim them.
  */
-@Component
 public class MemoryLeak {
 
     public static final int MAX_MB_PER_SECOND = 256;

@@ -1,4 +1,4 @@
-package edu.neu.strata.order.chaos;
+package edu.neu.strata.chaos;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;

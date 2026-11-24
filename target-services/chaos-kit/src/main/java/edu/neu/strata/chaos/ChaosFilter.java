@@ -1,4 +1,4 @@
-package edu.neu.strata.inventory.chaos;
+package edu.neu.strata.chaos;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -9,7 +9,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
-import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -19,7 +18,6 @@ import java.io.IOException;
  * {@code /actuator} are never affected, so the switches can always be turned off and
  * Prometheus can always scrape.
  */
-@Component
 public class ChaosFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(ChaosFilter.class);

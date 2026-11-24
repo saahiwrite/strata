@@ -1,4 +1,4 @@
-package edu.neu.strata.inventory.chaos;
+package edu.neu.strata.chaos;
 
 /** Ends the process. Separated out so tests can verify a crash without killing the JVM. */
 @FunctionalInterface

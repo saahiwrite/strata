@@ -24,6 +24,7 @@ The folders follow the components in our Phase 1 system design.
 ```
 strata/
   target-services/
+    chaos-kit/            Shared library: the /chaos/* failure switches, auto-configured into both services
     order-service/        Spring Boot service that STRATA heals (metrics, JSON logs, /chaos/* failure switches)
     inventory-service/    Second Spring Boot service, behind Nginx with order-service
   strata-healer/          The STRATA healer (Spring Boot, Java 21)
@@ -137,7 +138,7 @@ All of these run with `mvn verify` from the repo root, and in GitHub Actions on 
 
 - **Healer unit tests (JUnit 5):** the shared types, `PolicyLoaderTest`, `RiskScorerTest`, `PolicyConfigTest`, `AllowListTest`, `ActionValidatorTest`, `HashChainTest`, `AuditLogServiceTest` (tampering, deleted entries, forks, 40 concurrent appends), `SchemaMigrationTest`, `AuditConfigTest`, `TrustRecordTest`, `TrustServiceTest`, `ApiTest`, `AlertWebhookControllerTest`, `AlertParserTest`, `IncidentServiceTest`, `RuleMatcherTest`, `CooldownGuardTest`, `DockerActionExecutorTest`, `LokiLogClientTest`, `HealingOrchestratorTest`, `PrometheusClientTest`, `PrometheusRecoveryVerifierTest`, `VerificationConfigTest`. The persistence tests run the real Flyway migrations on in-memory H2 in PostgreSQL mode.
 - **Integration test:** `CrashRecoveryIT` (Testcontainers) kills a real container, posts a `ServiceDown` alert and checks that the healer restarts it, resolves the incident and keeps the audit chain valid, on real PostgreSQL.
-- **Target services:** 23 unit and MockMvc tests in each of `order-service` and `inventory-service` (API, Prometheus metrics, JSON logging, every chaos switch and its input validation), including `ChaosControllerTest`.
+- **Target services:** 18 tests in `chaos-kit` for every failure switch and its input validation (`ChaosControllerTest`, `ChaosStateTest`, `MemoryLeakTest`, `ChaosDisabledTest`), and 8 in each of `order-service` and `inventory-service` (API, Prometheus metrics, JSON logging, and that the switches are wired in). Run with `mvn verify` at the root.
 - **Monitoring config:** promtool unit tests for the alert rules (`infra/prometheus/tests/alerts-test.yml`); CI also checks the Prometheus and Alertmanager configs and `docker-compose.yml`.
 
 ## Next Steps (Phase 3)

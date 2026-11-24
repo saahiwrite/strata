@@ -1,4 +1,4 @@
-package edu.neu.strata.order.chaos;
+package edu.neu.strata.chaos;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

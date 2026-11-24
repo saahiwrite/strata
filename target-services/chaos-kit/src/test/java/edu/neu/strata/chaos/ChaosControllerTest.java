@@ -1,6 +1,7 @@
-package edu.neu.strata.inventory.chaos;
+package edu.neu.strata.chaos;
 
 import org.junit.jupiter.api.AfterEach;
+import edu.neu.strata.chaostest.TestServiceApplication;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
@@ -18,7 +19,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
+@SpringBootTest(classes = TestServiceApplication.class)
 @AutoConfigureMockMvc
 @AutoConfigureObservability
 class ChaosControllerTest {
@@ -43,7 +44,7 @@ class ChaosControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.errorRate").value(0.0))
                 .andExpect(jsonPath("$.latencyMs").value(0));
-        mvc.perform(get("/inventory")).andExpect(status().isOk());
+        mvc.perform(get("/items")).andExpect(status().isOk());
         verify(terminator, never()).terminate(1);
     }
 
@@ -61,7 +62,7 @@ class ChaosControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.errorRate").value(1.0));
 
-        mvc.perform(get("/inventory"))
+        mvc.perform(get("/items"))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.reason").value("chaos error switch"));
 
@@ -78,7 +79,7 @@ class ChaosControllerTest {
         mvc.perform(get("/actuator/health")).andExpect(status().isOk());
         mvc.perform(get("/chaos")).andExpect(status().isOk());
         mvc.perform(post("/chaos/reset")).andExpect(status().isOk());
-        mvc.perform(get("/inventory")).andExpect(status().isOk());
+        mvc.perform(get("/items")).andExpect(status().isOk());
     }
 
     @Test
@@ -88,7 +89,7 @@ class ChaosControllerTest {
                 .andExpect(jsonPath("$.latencyMs").value(300));
 
         long start = System.nanoTime();
-        mvc.perform(get("/inventory")).andExpect(status().isOk());
+        mvc.perform(get("/items")).andExpect(status().isOk());
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
 
         org.assertj.core.api.Assertions.assertThat(elapsedMs).isGreaterThanOrEqualTo(300);
@@ -140,7 +141,7 @@ class ChaosControllerTest {
     void exposesSwitchGauges() throws Exception {
         mvc.perform(post("/chaos/slow").param("delayMs", "50"));
         mvc.perform(get("/actuator/prometheus"))
-                .andExpect(content().string(containsString("chaos_latency_ms{application=\"inventory-service\"} 50.0")))
+                .andExpect(content().string(containsString("chaos_latency_ms{application=\"chaos-kit-test\"} 50.0")))
                 .andExpect(content().string(containsString("chaos_error_rate")));
     }
 }

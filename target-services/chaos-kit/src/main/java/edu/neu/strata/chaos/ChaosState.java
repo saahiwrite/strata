@@ -1,8 +1,7 @@
-package edu.neu.strata.inventory.chaos;
+package edu.neu.strata.chaos;
 
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
-import org.springframework.stereotype.Component;
 
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -10,7 +9,6 @@ import java.util.concurrent.ThreadLocalRandom;
  * Current failure-switch settings. All fields are volatile so a switch flipped through
  * {@link ChaosController} takes effect on the next request without locking.
  */
-@Component
 public class ChaosState {
 
     public static final long MAX_LATENCY_MS = 60_000;

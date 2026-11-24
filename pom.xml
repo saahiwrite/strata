@@ -27,6 +27,7 @@
 
     <modules>
         <module>strata-healer</module>
+        <module>target-services/chaos-kit</module>
         <module>target-services/order-service</module>
         <module>target-services/inventory-service</module>
     </modules>
