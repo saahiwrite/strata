@@ -117,6 +117,15 @@ services:
       timeout: 3s
       retries: 10
 
+  # Probes Nginx for Prometheus (#45, S18). Nginx has no metrics endpoint of its own,
+  # so Prometheus asks this exporter to GET /nginx-health and reads probe_success.
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.27.0
+    command:
+      - --config.file=/etc/blackbox/blackbox.yml
+    volumes:
+      - ./infra/blackbox:/etc/blackbox:ro
+
   alertmanager:
     image: prom/alertmanager:v0.28.1
     command:

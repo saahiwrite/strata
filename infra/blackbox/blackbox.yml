@@ -1,0 +1,9 @@
+# Blackbox exporter modules (#45). Prometheus asks it to probe a URL and gets
+# back probe_success (1 = the URL answered 2xx in time, 0 = it didn't).
+modules:
+  http_2xx:
+    prober: http
+    timeout: 3s
+    http:
+      preferred_ip_protocol: ip4
+      valid_status_codes: []   # empty means any 2xx
