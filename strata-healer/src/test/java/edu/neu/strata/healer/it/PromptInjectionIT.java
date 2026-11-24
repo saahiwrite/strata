@@ -9,6 +9,11 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -52,6 +57,22 @@ class PromptInjectionIT {
         registry.add("spring.datasource.url", postgres::getJdbcUrl);
         registry.add("spring.datasource.username", postgres::getUsername);
         registry.add("spring.datasource.password", postgres::getPassword);
+        registry.add("strata.policy.location", PromptInjectionIT::restartOnlyPolicy);
+    }
+
+    // The bundled policy also allows rollback of the alert's own container (with approval), so these
+    // scenarios run with a policy that only allows restarts: what the screen misses must hit the allow-list.
+    private static String restartOnlyPolicy() {
+        try {
+            String yaml = new String(PromptInjectionIT.class.getResourceAsStream("/policy.yaml").readAllBytes(),
+                    StandardCharsets.UTF_8).replace("    - SCALE_OUT\n    - ROLLBACK\n", "");
+            Path file = Files.createTempFile("policy-restart-only", ".yaml");
+            Files.writeString(file, yaml);
+            file.toFile().deleteOnExit();
+            return file.toUri().toString();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     @MockBean
