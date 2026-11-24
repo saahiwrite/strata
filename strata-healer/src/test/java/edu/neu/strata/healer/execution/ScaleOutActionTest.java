@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.RETURNS_SELF;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -21,6 +22,8 @@ import org.mockito.ArgumentCaptor;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.InspectContainerCmd;
 import com.github.dockerjava.api.command.InspectContainerResponse;
+import com.github.dockerjava.api.command.RemoveContainerCmd;
+import com.github.dockerjava.api.command.StopContainerCmd;
 import com.github.dockerjava.api.model.Container;
 import com.github.dockerjava.api.model.ContainerConfig;
 
@@ -71,6 +74,7 @@ class ScaleOutActionTest {
 
         assertTrue(result.success());
         assertEquals("started strata-order-service-2", result.detail());
+        assertEquals("strata-order-service-2", result.created());
         ArgumentCaptor<Map<String, String>> labels = ArgumentCaptor.forClass(Map.class);
         verify(cloner).start(eq(source), eq("strata-order-service-2"), eq("strata-order-service"),
                 labels.capture(), eq("order-service"));
@@ -110,5 +114,30 @@ class ScaleOutActionTest {
 
         assertFalse(result.success());
         verify(cloner, never()).start(any(), anyString(), anyString(), any(), anyString());
+    }
+
+    @Test
+    void undoStopsAndRemovesTheInstanceThatWasStarted() {
+        StopContainerCmd stop = mock(StopContainerCmd.class, RETURNS_SELF);
+        RemoveContainerCmd remove = mock(RemoveContainerCmd.class, RETURNS_SELF);
+        when(docker.stopContainerCmd("strata-order-service-2")).thenReturn(stop);
+        when(docker.removeContainerCmd("strata-order-service-2")).thenReturn(remove);
+        ExecutionResult executed = new ExecutionResult(ActionType.SCALE_OUT, TARGET, true,
+                "started strata-order-service-2", "strata-order-service-2");
+
+        ExecutionResult undone = action.undo(executed);
+
+        assertTrue(undone.success());
+        assertEquals("removed strata-order-service-2", undone.detail());
+        verify(stop).exec();
+        verify(remove).exec();
+    }
+
+    @Test
+    void undoWithoutAStartedInstanceDoesNothing() {
+        ExecutionResult undone = action.undo(ExecutionResult.succeeded(ActionType.SCALE_OUT, TARGET));
+
+        assertFalse(undone.success());
+        verify(docker, never()).stopContainerCmd(anyString());
     }
 }

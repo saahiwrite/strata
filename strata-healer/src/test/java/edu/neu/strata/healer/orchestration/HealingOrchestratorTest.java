@@ -76,6 +76,10 @@ class HealingOrchestratorTest {
         when(executor.execute(any(), anyString()))
                 .thenAnswer(call -> ExecutionResult.succeeded(call.getArgument(0), call.getArgument(1)));
         when(verifier.verify(anyString(), any())).thenReturn(true);
+        when(executor.undo(any())).thenAnswer(call -> {
+            ExecutionResult executed = call.getArgument(0);
+            return ExecutionResult.failed(executed.action(), executed.target(), "nothing to undo for " + executed.action());
+        });
     }
 
     private HealingOrchestrator orchestrator(Policy policy) {
@@ -156,6 +160,42 @@ class HealingOrchestratorTest {
         assertThat(incidentStatus(incident.id())).isEqualTo("ESCALATED");
         assertThat(decisionOutcome(incident.id())).isEqualTo("FAILED");
         assertThat(trust.get(ActionType.RESTART).failures()).isEqualTo(1);
+    }
+
+    @Test
+    void aRestartThatDidNotHelpIsEscalatedAndTheUndoIsAudited() {
+        when(verifier.verify(anyString(), any())).thenReturn(false);
+        Incident incident = open(alert("ServiceDown", CONTAINER));
+
+        orchestrator().heal(incident);
+
+        List<AuditEventType> events = audit.forIncident(incident.id()).stream().map(AuditEntry::eventType).toList();
+        assertThat(events).containsSubsequence(AuditEventType.VERIFICATION, AuditEventType.UNDO,
+                AuditEventType.TRUST_UPDATE, AuditEventType.INCIDENT_CLOSED);
+        assertThat(incidentStatus(incident.id())).isEqualTo("ESCALATED");
+        assertThat(trust.get(ActionType.RESTART).failures()).isEqualTo(1);
+        assertThat(audit.verify().valid()).isTrue();
+    }
+
+    @Test
+    void aScaleOutThatDidNotHelpRemovesTheExtraInstance() {
+        ExecutionResult started = new ExecutionResult(ActionType.SCALE_OUT, CONTAINER, true,
+                "started strata-order-service-2", "strata-order-service-2");
+        doReturn(started).when(executor).execute(ActionType.SCALE_OUT, CONTAINER);
+        doReturn(new ExecutionResult(ActionType.SCALE_OUT, CONTAINER, true, "removed strata-order-service-2"))
+                .when(executor).undo(started);
+        when(verifier.verify(anyString(), any())).thenReturn(false);
+        Incident incident = open(alert("HighLatency", CONTAINER));
+
+        orchestrator().heal(incident);
+
+        verify(executor).undo(started);
+        List<AuditEventType> events = audit.forIncident(incident.id()).stream().map(AuditEntry::eventType).toList();
+        assertThat(events).containsSubsequence(AuditEventType.EXECUTION, AuditEventType.VERIFICATION,
+                AuditEventType.UNDO, AuditEventType.INCIDENT_CLOSED);
+        assertThat(incidentStatus(incident.id())).isEqualTo("ESCALATED");
+        assertThat(decisionOutcome(incident.id())).isEqualTo("FAILED");
+        assertThat(trust.get(ActionType.SCALE_OUT).failures()).isEqualTo(1);
     }
 
     @Test

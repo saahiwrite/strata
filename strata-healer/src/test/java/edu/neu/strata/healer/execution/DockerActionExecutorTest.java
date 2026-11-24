@@ -73,4 +73,37 @@ class DockerActionExecutorTest {
         assertFalse(result.success());
         assertEquals("docker is down", result.detail());
     }
+
+    @Test
+    void undoOfAScaleOutIsHandedToTheScaleOutAction() {
+        ExecutionResult executed = new ExecutionResult(ActionType.SCALE_OUT, "strata-order-service-1", true,
+                "started strata-order-service-2", "strata-order-service-2");
+        ExecutionResult removed = new ExecutionResult(ActionType.SCALE_OUT, "strata-order-service-1", true,
+                "removed strata-order-service-2");
+        when(scaleOut.undo(executed)).thenReturn(removed);
+
+        assertSame(removed, executor.undo(executed));
+    }
+
+    @Test
+    void aRestartOrRollbackCannotBeUndone() {
+        ExecutionResult restarted = ExecutionResult.succeeded(ActionType.RESTART, "strata-order-service-1");
+        ExecutionResult rolledBack = ExecutionResult.succeeded(ActionType.ROLLBACK, "strata-order-service-1");
+
+        assertFalse(executor.undo(restarted).success());
+        assertEquals("nothing to undo for ROLLBACK", executor.undo(rolledBack).detail());
+        verify(scaleOut, never()).undo(restarted);
+    }
+
+    @Test
+    void anExceptionWhileUndoingBecomesAFailedResult() {
+        ExecutionResult executed = new ExecutionResult(ActionType.SCALE_OUT, "strata-order-service-1", true,
+                "started strata-order-service-2", "strata-order-service-2");
+        when(scaleOut.undo(executed)).thenThrow(new IllegalStateException("docker is down"));
+
+        ExecutionResult result = executor.undo(executed);
+
+        assertFalse(result.success());
+        assertEquals("docker is down", result.detail());
+    }
 }

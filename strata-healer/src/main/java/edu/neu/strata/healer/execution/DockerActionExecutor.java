@@ -40,6 +40,22 @@ public class DockerActionExecutor implements ActionExecutor {
         }
     }
 
+    @Override
+    public ExecutionResult undo(ExecutionResult executed) {
+        if (executed.action() != ActionType.SCALE_OUT) {
+            return ActionExecutor.super.undo(executed);
+        }
+        try {
+            ExecutionResult result = scaleOut.undo(executed);
+            log.info("Undo of {} on {}: {} {}", executed.action(), executed.target(),
+                    result.success() ? "ok" : "failed", result.detail());
+            return result;
+        } catch (Exception e) {
+            log.warn("Could not undo {} on {}: {}", executed.action(), executed.target(), e.getMessage());
+            return ExecutionResult.failed(executed.action(), executed.target(), e.getMessage());
+        }
+    }
+
     private ExecutionResult restart(String target) {
         dockerClient.restartContainerCmd(target).exec();
         return ExecutionResult.succeeded(ActionType.RESTART, target);

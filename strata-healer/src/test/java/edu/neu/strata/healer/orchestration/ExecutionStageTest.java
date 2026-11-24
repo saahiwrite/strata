@@ -11,11 +11,14 @@ import static org.mockito.Mockito.when;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
+import edu.neu.strata.healer.audit.AuditEntry;
+import edu.neu.strata.healer.audit.AuditEventType;
 import edu.neu.strata.healer.audit.AuditLogService;
 import edu.neu.strata.healer.detection.Incident;
 import edu.neu.strata.healer.detection.IncidentService;
@@ -75,16 +78,99 @@ class ExecutionStageTest {
         assertThat(trust.get(ActionType.RESTART).successes()).isEqualTo(1);
     }
 
+    private List<AuditEventType> auditTypes() {
+        return audit.forIncident(incident.id()).stream().map(AuditEntry::eventType).toList();
+    }
+
+    private String auditPayload(AuditEventType type) {
+        return audit.forIncident(incident.id()).stream()
+                .filter(e -> e.eventType() == type).findFirst().orElseThrow().payload();
+    }
+
     @Test
     void aServiceThatDoesNotRecoverIsEscalatedAndCountsAsAFailure() {
         when(executor.execute(ActionType.RESTART, TARGET)).thenReturn(ExecutionResult.succeeded(ActionType.RESTART, TARGET));
         when(verifier.verify(anyString(), any())).thenReturn(false);
+        when(executor.undo(any())).thenReturn(ExecutionResult.failed(ActionType.RESTART, TARGET, "nothing to undo for RESTART"));
 
         stage.run(incident, diagnosis, decision);
 
         assertThat(decision.outcome()).isEqualTo(DecisionOutcome.FAILED);
         assertThat(incidentStatus()).isEqualTo("ESCALATED");
         assertThat(trust.get(ActionType.RESTART).failures()).isEqualTo(1);
+    }
+
+    @Test
+    void aRestartThatDidNotHelpIsAuditedAsNotUndoable() {
+        when(executor.execute(ActionType.RESTART, TARGET)).thenReturn(ExecutionResult.succeeded(ActionType.RESTART, TARGET));
+        when(verifier.verify(anyString(), any())).thenReturn(false);
+        when(executor.undo(any())).thenReturn(ExecutionResult.failed(ActionType.RESTART, TARGET, "nothing to undo for RESTART"));
+
+        stage.run(incident, diagnosis, decision);
+
+        assertThat(auditTypes()).containsSubsequence(AuditEventType.EXECUTION, AuditEventType.VERIFICATION,
+                AuditEventType.UNDO, AuditEventType.TRUST_UPDATE, AuditEventType.INCIDENT_CLOSED);
+        assertThat(auditPayload(AuditEventType.UNDO)).contains("\"success\":false", "nothing to undo for RESTART");
+        assertThat(auditPayload(AuditEventType.INCIDENT_CLOSED)).contains("not undone");
+    }
+
+    @Test
+    void aScaleOutThatDidNotHelpIsUndone() {
+        Diagnosis scaleOut = new Diagnosis("high-latency-scale-out", ActionType.SCALE_OUT, TARGET, 0.8);
+        ExecutionResult started = new ExecutionResult(ActionType.SCALE_OUT, TARGET, true,
+                "started strata-order-service-2", "strata-order-service-2");
+        when(executor.execute(ActionType.SCALE_OUT, TARGET)).thenReturn(started);
+        when(verifier.verify(anyString(), any())).thenReturn(false);
+        when(executor.undo(started)).thenReturn(new ExecutionResult(ActionType.SCALE_OUT, TARGET, true,
+                "removed strata-order-service-2"));
+
+        stage.run(incident, scaleOut, decision);
+
+        verify(executor).undo(started);
+        assertThat(auditPayload(AuditEventType.UNDO)).contains("\"success\":true", "removed strata-order-service-2");
+        assertThat(auditPayload(AuditEventType.INCIDENT_CLOSED)).contains("ESCALATED", "undone: removed");
+        assertThat(decision.outcome()).isEqualTo(DecisionOutcome.FAILED);
+        assertThat(incidentStatus()).isEqualTo("ESCALATED");
+        assertThat(trust.get(ActionType.SCALE_OUT).failures()).isEqualTo(1);
+    }
+
+    @Test
+    void aRollbackThatDidNotHelpIsEscalatedWithoutAnUndo() {
+        Diagnosis rollback = new Diagnosis("error-rate-after-deploy-rollback", ActionType.ROLLBACK, TARGET, 0.8);
+        ExecutionResult done = new ExecutionResult(ActionType.ROLLBACK, TARGET, true, "rolled back 1 instance(s)");
+        when(executor.execute(ActionType.ROLLBACK, TARGET)).thenReturn(done);
+        when(verifier.verify(anyString(), any())).thenReturn(false);
+        when(executor.undo(done)).thenReturn(ExecutionResult.failed(ActionType.ROLLBACK, TARGET, "nothing to undo for ROLLBACK"));
+
+        stage.run(incident, rollback, decision);
+
+        assertThat(auditPayload(AuditEventType.UNDO)).contains("\"success\":false");
+        assertThat(incidentStatus()).isEqualTo("ESCALATED");
+        assertThat(trust.get(ActionType.ROLLBACK).failures()).isEqualTo(1);
+    }
+
+    @Test
+    void anErrorWhileUndoingStillEscalatesAndCountsTheFailure() {
+        when(executor.execute(ActionType.RESTART, TARGET)).thenReturn(ExecutionResult.succeeded(ActionType.RESTART, TARGET));
+        when(verifier.verify(anyString(), any())).thenReturn(false);
+        when(executor.undo(any())).thenThrow(new IllegalStateException("docker is down"));
+
+        stage.run(incident, diagnosis, decision);
+
+        assertThat(auditPayload(AuditEventType.UNDO)).contains("undo failed: docker is down");
+        assertThat(incidentStatus()).isEqualTo("ESCALATED");
+        assertThat(trust.get(ActionType.RESTART).failures()).isEqualTo(1);
+    }
+
+    @Test
+    void aRecoveredServiceIsNotUndone() {
+        when(executor.execute(ActionType.RESTART, TARGET)).thenReturn(ExecutionResult.succeeded(ActionType.RESTART, TARGET));
+        when(verifier.verify(anyString(), any())).thenReturn(true);
+
+        stage.run(incident, diagnosis, decision);
+
+        verify(executor, never()).undo(any());
+        assertThat(auditTypes()).doesNotContain(AuditEventType.UNDO);
     }
 
     @Test
