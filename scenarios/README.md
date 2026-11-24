@@ -31,6 +31,10 @@ Alert thresholds (from `infra/prometheus/alerts.yml`): `ServiceDown` after 10 s 
 | S17 | Error with no matching rule | Unknown error | `inject.sh scenario S17`: logs `java.lang.IllegalStateException: ledger checksum mismatch` on inventory-service with a 50% error rate, + traffic | `HighErrorRate` with an exception no rule in `rules.yaml` knows | No rule matches; local LLM diagnosis proposes an allow-listed action with lower confidence, so higher risk | L2 approval | 3 |
 | S18 | Nginx goes down | Infrastructure | `docker compose stop nginx` | Gateway health check fails | Nginx is not a heal target, so STRATA only opens an incident and hands it to a human | L3 human only | 3 |
 
+## Demo: both use cases
+
+`./scenarios/demo.sh` runs S01 and S14 on the real stack, start to finish, and checks each ends `RESOLVED` (S14 waits for you to approve the rollback on the dashboard). Before each step it waits until no alert from an earlier run is still active and until the healer's 60 s cooldown has passed, because Alertmanager only tells the healer when an alert starts and the healer won't act twice on one container within a minute.
+
 ## Injecting
 
 `inject.sh` talks to the `/chaos` endpoints of both services. By default it goes through Nginx on `http://localhost:8080`; set `STRATA_GATEWAY`, `ORDER_SERVICE_URL` or `INVENTORY_SERVICE_URL` to point elsewhere.
