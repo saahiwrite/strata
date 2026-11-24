@@ -6,7 +6,8 @@
 name: strata
 
 services:
-  # The healer. It restarts containers through the Docker socket.
+  # The healer. It restarts, scales out and rolls back containers through
+  # docker-proxy, never through the Docker socket itself (#63).
   strata-healer:
     build: ./strata-healer
     ports:
@@ -24,11 +25,40 @@ services:
       STRATA_LLM_ENABLED: "true"
       OLLAMA_URL: http://ollama:11434
       STRATA_LLM_MODEL: ${STRATA_LLM_MODEL:-qwen2.5:0.5b}
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      DOCKER_HOST: tcp://docker-proxy:2375
+    networks:
+      - default
+      - docker-api
     depends_on:
       postgres:
         condition: service_healthy
+      docker-proxy:
+        condition: service_started
+
+  # Least privilege for the healer (#63). The Docker socket gives full control of
+  # every container on the machine, so only this proxy mounts it, and it lets
+  # through just the calls the healer's actions make:
+  #   GET  /containers/json, /containers/{id}/json       list and inspect
+  #   POST /containers/{id}/restart|start|stop           restart, scale out, rollback
+  #   POST /containers/create, DELETE /containers/{id}   scale out and rollback (new copy, old one removed)
+  #   POST /networks/{id}/connect|disconnect             put a new copy on the service's network
+  # Everything else (exec, images, volumes, build, system, swarm, events...) gets 403.
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    environment:
+      CONTAINERS: 1
+      NETWORKS: 1
+      POST: 1
+      ALLOW_RESTARTS: 1
+      ALLOW_START: 1
+      ALLOW_STOP: 1
+      EVENTS: 0
+      PING: 1
+      VERSION: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker-api
 
   # Local LLM for diagnosing errors no rule matches (FR3). Optional: start it with
   # `docker compose --profile llm up`. Without it the healer escalates unknown errors to a human.
@@ -188,3 +218,9 @@ volumes:
   loki-data:
   grafana-data:
   ollama-models:
+
+networks:
+  # Only the healer and docker-proxy are on this network, and it has no route
+  # out, so nothing else can reach the proxy.
+  docker-api:
+    internal: true
