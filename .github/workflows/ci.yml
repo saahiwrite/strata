@@ -17,9 +17,24 @@ jobs:
           java-version: 21
           cache: maven
 
-      # Unit tests for all modules, plus CrashRecoveryIT (Docker is available on the runner)
+      # Unit tests for all modules, plus every *IT in strata-healer (Testcontainers;
+      # Docker is available on the runner). JaCoCo writes a coverage report per module.
       - name: mvn verify
         run: mvn -B verify
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          echo "## Test coverage (JaCoCo)" >> "$GITHUB_STEP_SUMMARY"
+          python3 .github/scripts/coverage_summary.py . | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: "**/target/site/jacoco/"
+          if-no-files-found: warn
 
   infra:
     runs-on: ubuntu-latest
