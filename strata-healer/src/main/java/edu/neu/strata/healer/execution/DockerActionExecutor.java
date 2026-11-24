@@ -15,24 +15,33 @@ public class DockerActionExecutor implements ActionExecutor {
     private static final Logger log = LoggerFactory.getLogger(DockerActionExecutor.class);
 
     private final DockerClient dockerClient;
+    private final ScaleOutAction scaleOut;
+    private final RollbackAction rollback;
 
-    public DockerActionExecutor(DockerClient dockerClient) {
+    public DockerActionExecutor(DockerClient dockerClient, ScaleOutAction scaleOut, RollbackAction rollback) {
         this.dockerClient = dockerClient;
+        this.scaleOut = scaleOut;
+        this.rollback = rollback;
     }
 
     @Override
     public ExecutionResult execute(ActionType type, String target) {
-        if (type != ActionType.RESTART) {
-            return ExecutionResult.failed(type, target, type + " is not supported yet");
-        }
-
         try {
-            dockerClient.restartContainerCmd(target).exec();
-            log.info("Restarted container {}", target);
-            return ExecutionResult.succeeded(type, target);
+            ExecutionResult result = switch (type) {
+                case RESTART -> restart(target);
+                case SCALE_OUT -> scaleOut.run(target);
+                case ROLLBACK -> rollback.run(target);
+            };
+            log.info("{} on {}: {} {}", type, target, result.success() ? "ok" : "failed", result.detail());
+            return result;
         } catch (Exception e) {
-            log.warn("Could not restart container {}: {}", target, e.getMessage());
+            log.warn("Could not run {} on {}: {}", type, target, e.getMessage());
             return ExecutionResult.failed(type, target, e.getMessage());
         }
+    }
+
+    private ExecutionResult restart(String target) {
+        dockerClient.restartContainerCmd(target).exec();
+        return ExecutionResult.succeeded(ActionType.RESTART, target);
     }
 }
