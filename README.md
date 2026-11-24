@@ -31,6 +31,7 @@ strata/
     src/main/java/edu/neu/strata/healer/
       model/              Shared types between the stages: Alert, Diagnosis, ActionType, AutonomyLevel, RiskAssessment, ExecutionResult
       api/                REST endpoints: Alertmanager webhook, incidents and audit API
+      dashboard/          Thymeleaf dashboard (/dashboard): incidents, pending approvals with Approve/Deny, trust records, audit chain
       detection/          Turns incoming alerts into incidents
       diagnosis/          Rule matcher (rules.yaml) and Loki log client; LLM diagnosis later
       validation/         Action allow-list; rejects unknown actions and targets

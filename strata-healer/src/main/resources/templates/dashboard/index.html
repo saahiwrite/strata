@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head th:replace="~{dashboard/fragments :: head('STRATA dashboard')}"></head>
+<body>
+<header th:replace="~{dashboard/fragments :: header}"></header>
+<main>
+
+    <section id="approvals">
+        <h2>Pending approvals <span class="badge" th:text="${#lists.size(pending)}">0</span></h2>
+        <p class="empty" th:if="${#lists.isEmpty(pending)}">Nothing is waiting for approval.</p>
+        <div th:unless="${#lists.isEmpty(pending)}" class="actions" style="margin: 0 0 12px">
+            <label for="reviewer" class="muted">Your name</label>
+            <input type="text" id="reviewer" placeholder="engineer" maxlength="60">
+        </div>
+        <div class="approval" th:each="p : ${pending}" th:attr="data-decision-id=${p.decision.id}">
+            <h3>
+                <span th:text="${p.decision.action}">ROLLBACK</span>
+                <span class="mono" th:text="${p.decision.target}">strata-order-service-1</span>
+                <span class="badge" th:classappend="${p.decision.autonomyLevel}"
+                      th:text="${fmt.level(p.decision.autonomyLevel)}">L2 approval</span>
+            </h3>
+            <dl>
+                <dt>Incident</dt>
+                <dd><a th:href="@{/dashboard/incidents/{id}(id=${p.incident.id})}"
+                       th:text="|#${p.incident.id} ${p.incident.alertName} on ${p.incident.service}|">#1</a></dd>
+                <dt>Diagnosis</dt>
+                <dd th:text="|${p.decision.ruleId} (confidence ${fmt.percent(p.decision.confidence)})|">rule</dd>
+                <dt>Risk score</dt>
+                <dd>
+                    <strong th:text="${p.decision.riskScore}">49</strong> / 100
+                    <ul class="factors">
+                        <li th:each="f : ${p.factors}" th:text="|${f.key} ${f.value}|">blastRadius 25</li>
+                    </ul>
+                </dd>
+                <dt>Waiting since</dt>
+                <dd th:text="${fmt.time(p.decision.decidedAt)}">time</dd>
+            </dl>
+            <div class="actions">
+                <button type="button" class="approve" data-verdict="approve">Approve</button>
+                <button type="button" class="deny" data-verdict="deny">Deny</button>
+                <span class="message"></span>
+            </div>
+        </div>
+    </section>
+
+    <section id="incidents">
+        <h2>Incidents</h2>
+        <div class="filters">
+            <a th:href="@{/dashboard}" th:classappend="${status == null} ? on">All</a>
+            <a th:each="s : ${ {'OPEN','RESOLVED','ESCALATED'} }" th:href="@{/dashboard(status=${s})}"
+               th:classappend="${status == s} ? on" th:text="${s}">OPEN</a>
+        </div>
+        <p class="empty" th:if="${#lists.isEmpty(rows)}">No incidents yet.</p>
+        <div class="table-wrap" th:unless="${#lists.isEmpty(rows)}">
+            <table>
+                <thead>
+                <tr><th>#</th><th>Opened</th><th>Alert</th><th>Service</th><th>Status</th>
+                    <th>Diagnosis</th><th>Risk</th><th>Level</th><th>Outcome</th><th>Time to close</th></tr>
+                </thead>
+                <tbody>
+                <tr th:each="r : ${rows}">
+                    <td><a th:href="@{/dashboard/incidents/{id}(id=${r.incident.id})}" th:text="${r.incident.id}">1</a></td>
+                    <td class="muted" th:text="${fmt.time(r.incident.openedAt)}">time</td>
+                    <td th:text="${r.incident.alertName}">ServiceDown</td>
+                    <td th:text="${r.incident.service}">order-service</td>
+                    <td><span class="badge" th:classappend="${r.incident.status}" th:text="${r.incident.status}">OPEN</span></td>
+                    <td th:text="${r.diagnosis()}">rule → RESTART</td>
+                    <td th:text="${r.latest != null and r.latest.riskScore != null} ? ${r.latest.riskScore} : '—'">9</td>
+                    <td><span th:if="${r.latest != null and r.latest.autonomyLevel != null}" class="badge"
+                              th:classappend="${r.latest.autonomyLevel}" th:text="${fmt.level(r.latest.autonomyLevel)}">L0</span></td>
+                    <td><span th:if="${r.latest != null}" class="badge" th:classappend="${r.latest.outcome}"
+                              th:text="${r.latest.outcome}">RECOVERED</span></td>
+                    <td th:text="${fmt.duration(r.incident.openedAt, r.incident.closedAt)}">15s</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <div class="grid2">
+        <section id="trust">
+            <h2>Action levels and trust records</h2>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Action</th><th>Successes</th><th>Failures</th><th>Success rate</th><th>Last change</th></tr></thead>
+                    <tbody>
+                    <tr th:each="t : ${trust}">
+                        <td th:text="${t.action}">RESTART</td>
+                        <td th:text="${t.successes}">3</td>
+                        <td th:text="${t.failures}">0</td>
+                        <td th:text="${t.runs() == 0} ? '—' : ${fmt.percent(t.successRate())}">100%</td>
+                        <td class="muted" th:text="${fmt.time(t.updatedAt)}">time</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section id="audit">
+            <h2>Audit chain</h2>
+            <div class="chain">
+                <span class="badge" th:classappend="${chain.valid} ? valid : broken"
+                      th:text="${chain.valid} ? 'Chain intact' : 'Chain broken'">Chain intact</span>
+                <span th:text="|${chain.entries} entries|">12 entries</span>
+            </div>
+            <p th:unless="${chain.valid}" class="message error"
+               th:text="|First bad entry: #${chain.brokenAt}. ${chain.reason}|">reason</p>
+            <p class="muted" th:if="${chain.headHash != null}">Latest hash
+                <span class="mono" th:text="${chain.headHash}">abc</span></p>
+        </section>
+    </div>
+</main>
+<script th:src="@{/dashboard/approvals.js}"></script>
+</body>
+</html>
