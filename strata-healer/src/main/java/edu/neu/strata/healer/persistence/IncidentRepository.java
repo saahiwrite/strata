@@ -56,6 +56,21 @@ public class IncidentRepository {
                 .list();
     }
 
+    public Optional<DecisionRecord> findDecision(long id) {
+        return jdbc.sql("SELECT " + DECISION_COLUMNS + " FROM decisions WHERE id = ?")
+                .param(id)
+                .query(IncidentRepository::mapDecision)
+                .optional();
+    }
+
+    /** Decisions an engineer still has to approve or deny, oldest first. */
+    public List<DecisionRecord> findAwaitingApproval() {
+        return jdbc.sql("SELECT " + DECISION_COLUMNS + " FROM decisions WHERE outcome = 'AWAITING_APPROVAL' "
+                        + "ORDER BY decided_at, id")
+                .query(IncidentRepository::mapDecision)
+                .list();
+    }
+
     private static IncidentRecord mapIncident(ResultSet rs, int row) throws SQLException {
         return new IncidentRecord(
                 rs.getLong("id"),

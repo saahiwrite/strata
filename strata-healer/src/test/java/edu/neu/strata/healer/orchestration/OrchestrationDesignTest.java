@@ -16,7 +16,7 @@ class OrchestrationDesignTest {
     private static final int MAX_COLLABORATORS = 6;
 
     private static final List<Class<?>> CLASSES = List.of(HealingOrchestrator.class, IncidentLifecycle.class,
-            DiagnosisStage.class, AssessmentStage.class, ExecutionStage.class);
+            DiagnosisStage.class, AssessmentStage.class, ExecutionStage.class, ApprovalService.class);
 
     private static long collaborators(Constructor<?> constructor) {
         return Arrays.stream(constructor.getParameterTypes())
