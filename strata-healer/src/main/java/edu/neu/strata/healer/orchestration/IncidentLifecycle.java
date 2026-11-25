@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import edu.neu.strata.healer.audit.AuditEventType;
@@ -13,6 +14,7 @@ import edu.neu.strata.healer.audit.AuditLogService;
 import edu.neu.strata.healer.detection.Incident;
 import edu.neu.strata.healer.detection.IncidentService;
 import edu.neu.strata.healer.detection.IncidentStatus;
+import edu.neu.strata.healer.metrics.HealerMetrics;
 import edu.neu.strata.healer.model.Alert;
 import edu.neu.strata.healer.model.DecisionOutcome;
 import edu.neu.strata.healer.model.Diagnosis;
@@ -39,11 +41,19 @@ public class IncidentLifecycle {
     private final IncidentService incidents;
     private final DecisionStore decisions;
     private final AuditLogService audit;
+    private final HealerMetrics metrics;
 
     public IncidentLifecycle(IncidentService incidents, DecisionStore decisions, AuditLogService audit) {
+        this(incidents, decisions, audit, HealerMetrics.none());
+    }
+
+    @Autowired
+    public IncidentLifecycle(IncidentService incidents, DecisionStore decisions, AuditLogService audit,
+                             HealerMetrics metrics) {
         this.incidents = incidents;
         this.decisions = decisions;
         this.audit = audit;
+        this.metrics = metrics;
     }
 
     // Empty when the same alert already has an open incident
@@ -51,7 +61,9 @@ public class IncidentLifecycle {
         if (incidents.findOpen(alert.service(), alert.alertName()).isPresent()) {
             return Optional.empty();
         }
-        return Optional.of(incidents.open(alert));
+        Incident incident = incidents.open(alert);
+        metrics.incidentOpened();
+        return Optional.of(incident);
     }
 
     public void begin(Incident incident) {
@@ -64,12 +76,14 @@ public class IncidentLifecycle {
 
     public Decision propose(Incident incident, Diagnosis diagnosis, RiskAssessment risk) {
         long id = decisions.insert(incident.id(), diagnosis, null, risk, DecisionOutcome.PENDING);
+        metrics.decisionScored(diagnosis, risk.level());
         return new Decision(id, incident.id(), DecisionOutcome.PENDING);
     }
 
     // The validator said no: the decision is stored as rejected and the incident goes to a human
     public void reject(Incident incident, Diagnosis diagnosis, String reason) {
         decisions.insert(incident.id(), diagnosis, reason, null, DecisionOutcome.REJECTED);
+        metrics.proposalRejected(diagnosis);
         escalate(incident, "rejected: " + reason);
     }
 
@@ -81,6 +95,7 @@ public class IncidentLifecycle {
         }
         decisions.updateOutcome(decision.id(), next);
         decision.setOutcome(next);
+        metrics.decisionOutcome(next);
     }
 
     public void awaitApproval(Decision decision) {
@@ -96,12 +111,14 @@ public class IncidentLifecycle {
     public void resolve(Incident incident) {
         requireOpen(incident);
         incidents.resolve(incident.id());
+        metrics.incidentClosed(incident, IncidentStatus.RESOLVED);
         audit.append(AuditEventType.INCIDENT_CLOSED, incident.id(), Map.of("status", IncidentStatus.RESOLVED.name()));
     }
 
     public void escalate(Incident incident, String reason) {
         requireOpen(incident);
         incidents.escalate(incident.id());
+        metrics.incidentClosed(incident, IncidentStatus.ESCALATED);
         Map<String, Object> details = new LinkedHashMap<>();
         details.put("status", IncidentStatus.ESCALATED.name());
         details.put("reason", reason);

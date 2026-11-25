@@ -447,4 +447,28 @@ class HealingOrchestratorTest {
                 .filter(e -> e.eventType() == AuditEventType.DIAGNOSIS).findFirst().orElseThrow();
         assertThat(diagnosis.payload()).contains("service-down-restart").doesNotContain("out-of-memory-restart");
     }
+
+    @Test
+    void healingIsCountedInTheMetrics() {
+        var registry = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
+        var metrics = new edu.neu.strata.healer.metrics.HealerMetrics(registry);
+        Policy policy = new PolicyLoader().loadDefault();
+        IncidentLifecycle lifecycle = new IncidentLifecycle(incidents, new DecisionStore(jdbc), audit, metrics);
+        HealingOrchestrator orchestrator = new HealingOrchestrator(lifecycle,
+                new DiagnosisStage(loki, new LogScreen(), new RuleMatcher(), audit, metrics),
+                new AssessmentStage(new ActionValidator(policy), new RiskScorer(policy), trust, audit),
+                new ExecutionStage(new CooldownGuard(Duration.ofMinutes(5), Clock.systemUTC()), executor,
+                        verifier, trust, audit, lifecycle, Duration.ofSeconds(1)),
+                Runnable::run);
+
+        orchestrator.handle(alert("ServiceDown", CONTAINER));
+
+        assertThat(registry.get("strata.incidents.opened").counter().count()).isEqualTo(1);
+        assertThat(registry.get("strata.incidents.closed").tag("status", "RESOLVED").counter().count()).isEqualTo(1);
+        assertThat(registry.get("strata.incident.recovery").timer().count()).isEqualTo(1);
+        assertThat(registry.get("strata.decisions").tag("level", "L0_AUTO").tag("source", "RULE").counter().count())
+                .isEqualTo(1);
+        assertThat(registry.get("strata.decision.outcomes").tag("outcome", "RECOVERED").counter().count())
+                .isEqualTo(1);
+    }
 }

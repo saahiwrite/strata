@@ -21,6 +21,7 @@ import org.springframework.stereotype.Component;
 import edu.neu.strata.healer.audit.AuditEventType;
 import edu.neu.strata.healer.audit.AuditLogService;
 import edu.neu.strata.healer.detection.Incident;
+import edu.neu.strata.healer.metrics.HealerMetrics;
 import edu.neu.strata.healer.model.ActionType;
 import edu.neu.strata.healer.model.Alert;
 import edu.neu.strata.healer.model.DecisionOutcome;
@@ -43,6 +44,7 @@ public class ApprovalService {
     private final Clock clock;
     private final Duration timeout;
     private final Executor background;
+    private HealerMetrics metrics = HealerMetrics.none();
 
     // Decisions someone already took. Only one caller gets to decide a given one.
     private final Set<Long> taken = ConcurrentHashMap.newKeySet();
@@ -66,6 +68,12 @@ public class ApprovalService {
         this.background = background;
     }
 
+    // Optional, so the constructors stay as they are; Spring sets it when the healer runs
+    @Autowired(required = false)
+    void setMetrics(HealerMetrics metrics) {
+        this.metrics = metrics;
+    }
+
     public List<PendingApproval> pending() {
         return records.findAwaitingApproval().stream().map(this::describe).toList();
     }
@@ -75,6 +83,7 @@ public class ApprovalService {
         Waiting waiting = take(decisionId);
         audit.append(AuditEventType.APPROVAL, waiting.incident.id(), Map.of(
                 "status", "approved", "decision", decisionId, "by", by));
+        metrics.approval(HealerMetrics.ApprovalResult.APPROVED);
         background.execute(() -> execute(waiting));
     }
 
@@ -82,6 +91,7 @@ public class ApprovalService {
         Waiting waiting = take(decisionId);
         audit.append(AuditEventType.APPROVAL, waiting.incident.id(), Map.of(
                 "status", "denied", "decision", decisionId, "by", by));
+        metrics.approval(HealerMetrics.ApprovalResult.DENIED);
         lifecycle.handToHuman(waiting.incident, waiting.decision, "denied by " + by);
     }
 
@@ -97,6 +107,7 @@ public class ApprovalService {
                 Waiting waiting = waitingFor(record);
                 audit.append(AuditEventType.APPROVAL, waiting.incident.id(), Map.of(
                         "status", "timed out", "decision", record.id()));
+                metrics.approval(HealerMetrics.ApprovalResult.TIMED_OUT);
                 lifecycle.handToHuman(waiting.incident, waiting.decision,
                         "nobody answered within " + timeout.toMinutes() + " minutes");
                 expired++;

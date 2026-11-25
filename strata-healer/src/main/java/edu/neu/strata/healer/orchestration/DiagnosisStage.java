@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import edu.neu.strata.healer.audit.AuditEventType;
@@ -12,6 +13,7 @@ import edu.neu.strata.healer.audit.AuditLogService;
 import edu.neu.strata.healer.detection.Incident;
 import edu.neu.strata.healer.diagnosis.Diagnoser;
 import edu.neu.strata.healer.diagnosis.LokiLogClient;
+import edu.neu.strata.healer.metrics.HealerMetrics;
 import edu.neu.strata.healer.model.Alert;
 import edu.neu.strata.healer.model.Diagnosis;
 import edu.neu.strata.healer.validation.LogScreen;
@@ -35,12 +37,20 @@ public class DiagnosisStage {
     private final LogScreen logScreen;
     private final Diagnoser diagnoser;
     private final AuditLogService audit;
+    private final HealerMetrics metrics;
 
     public DiagnosisStage(LokiLogClient logClient, LogScreen logScreen, Diagnoser diagnoser, AuditLogService audit) {
+        this(logClient, logScreen, diagnoser, audit, HealerMetrics.none());
+    }
+
+    @Autowired
+    public DiagnosisStage(LokiLogClient logClient, LogScreen logScreen, Diagnoser diagnoser, AuditLogService audit,
+                          HealerMetrics metrics) {
         this.logClient = logClient;
         this.logScreen = logScreen;
         this.diagnoser = diagnoser;
         this.audit = audit;
+        this.metrics = metrics;
     }
 
     public Result diagnose(Incident incident) {
@@ -58,6 +68,7 @@ public class DiagnosisStage {
                     "signals", List.copyOf(screened.signals()),
                     "excerpt", screened.findings().getFirst().excerpt()));
             diagnosing = diagnoser.withoutLlm();
+            metrics.injectionSuspected();
         }
 
         long started = System.nanoTime();

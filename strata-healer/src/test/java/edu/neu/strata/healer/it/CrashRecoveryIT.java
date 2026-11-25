@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -39,6 +40,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * instead of Prometheus. Needs Docker; runs in mvn verify.
  */
 @Testcontainers
+@AutoConfigureObservability  // tests turn metrics export off unless asked; this IT reads /actuator/prometheus
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class CrashRecoveryIT {
 
@@ -85,6 +87,35 @@ class CrashRecoveryIT {
 
         Map<?, ?> verify = http.getForObject("/api/audit/verify", Map.class);
         assertEquals(Boolean.TRUE, verify.get("valid"));
+
+        // The crash is on the healer's own metrics (#64): an incident, its time to recovery and an L0 decision
+        assertEquals(1.0, metric("strata_incidents_closed_total", "status=\"RESOLVED\""), "resolved incident counted");
+        assertEquals(1.0, metric("strata_incident_recovery_seconds_count"), "time to recovery recorded");
+        assertEquals(1.0, metric("strata_decisions_total", "level=\"L0_AUTO\"", "source=\"RULE\""), "L0 decision counted");
+        assertEquals(0.0, metric("strata_autonomy_level_shift", "action=\"RESTART\""), "autonomy gauge exposed");
+    }
+
+    /**
+     * A value from {@code /actuator/prometheus}: the first sample of {@code name} whose labels include
+     * every one of {@code labels}. Waits a little, since the counters move just after the incident closes.
+     */
+    private double metric(String name, String... labels) throws InterruptedException {
+        String text = "";
+        for (int attempt = 0; attempt < 20; attempt++) {
+            text = http.getForObject("/actuator/prometheus", String.class);
+            for (String line : text.split("\n")) {
+                if (!line.startsWith(name + "{") && !line.startsWith(name + " ")) {
+                    continue;
+                }
+                String labelPart = line.contains("{") ? line.substring(line.indexOf('{'), line.lastIndexOf('}') + 1) : "";
+                if (java.util.Arrays.stream(labels).allMatch(labelPart::contains)) {
+                    return Double.parseDouble(line.substring(line.lastIndexOf(' ') + 1));
+                }
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError("no " + name + " " + String.join(",", labels) + " in:\n"
+                + text.lines().filter(l -> l.startsWith("strata_")).collect(java.util.stream.Collectors.joining("\n")));
     }
 
     private boolean isRunning() {

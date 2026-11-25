@@ -37,6 +37,14 @@ scrape_configs:
           service: inventory-service
           container: strata-inventory-service-1
 
+  # The healer itself (#64): incidents, time to recovery, decisions per autonomy
+  # level and source, approvals and earned autonomy. No `service`/`container`
+  # labels on purpose, so no alert on these could ever send the healer to heal itself.
+  - job_name: strata-healer
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["strata-healer:9000"]
+
   # Nginx, the entry point in front of both services (#45, S18). Prometheus can't
   # scrape Nginx itself, so the blackbox exporter probes /nginx-health and Prometheus
   # records probe_success. The labels are the same kind the healer reads from every
