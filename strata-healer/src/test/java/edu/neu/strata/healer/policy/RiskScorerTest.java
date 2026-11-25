@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import edu.neu.strata.healer.model.ActionType;
 import edu.neu.strata.healer.model.AutonomyLevel;
 import edu.neu.strata.healer.model.Diagnosis;
+import edu.neu.strata.healer.model.DiagnosisSource;
 import edu.neu.strata.healer.model.RiskAssessment;
 import java.util.EnumMap;
 import java.util.Map;
@@ -163,6 +164,33 @@ class RiskScorerTest {
     @Test
     void demotionMakesARestartMoreCautious() {
         assertThat(scorer.assess(diagnosis(ActionType.RESTART, 0.95), new ActionHistory(3, 1, 2)).level())
+                .isEqualTo(AutonomyLevel.L2_APPROVAL);
+    }
+
+    private static Diagnosis llmDiagnosis(ActionType action, double confidence) {
+        return new Diagnosis("llm:test", action, "order-service", confidence, DiagnosisSource.LLM);
+    }
+
+    @Test
+    void llmRestartWaitsForApprovalEvenWithALowScore() {
+        RiskAssessment rule = scorer.assess(diagnosis(ActionType.RESTART, 0.6), ActionHistory.NONE);
+        RiskAssessment llm = scorer.assess(llmDiagnosis(ActionType.RESTART, 0.6), ActionHistory.NONE);
+
+        assertThat(llm.score()).isEqualTo(rule.score());
+        assertThat(rule.level()).isEqualTo(AutonomyLevel.L0_AUTO);
+        assertThat(llm.level()).isEqualTo(AutonomyLevel.L2_APPROVAL);
+    }
+
+    @Test
+    void llmFloorNeverLowersAStricterLevel() {
+        Policy lenient = new Policy(POLICY.environment(), POLICY.weights(), POLICY.thresholds(),
+                POLICY.environments(), POLICY.actions(), POLICY.allowList(), AutonomyLevel.L0_AUTO,
+                POLICY.autonomy());
+        RiskScorer lenientScorer = new RiskScorer(lenient);
+
+        assertThat(lenientScorer.assess(llmDiagnosis(ActionType.RESTART, 0.6), ActionHistory.NONE).level())
+                .isEqualTo(AutonomyLevel.L0_AUTO);
+        assertThat(lenientScorer.assess(llmDiagnosis(ActionType.ROLLBACK, 0.6), ActionHistory.NONE).level())
                 .isEqualTo(AutonomyLevel.L2_APPROVAL);
     }
 }

@@ -29,10 +29,13 @@ public final class PolicyLoader {
     public static final String DEFAULT_RESOURCE = "policy.yaml";
 
     private static final Set<String> TOP_LEVEL_KEYS =
-            Set.of("environment", "weights", "thresholds", "environments", "actions", "allowList", "autonomy");
+            Set.of("environment", "weights", "thresholds", "environments", "actions", "allowList", "diagnosis",
+                    "autonomy");
     private static final Set<String> THRESHOLD_KEYS = Set.of("l1From", "l2From", "l3From");
     private static final Set<String> ACTION_KEYS = Set.of("blastRadius", "reversibility", "minLevel");
     private static final Set<String> ALLOW_LIST_KEYS = Set.of("actions", "targets");
+    private static final Set<String> DIAGNOSIS_KEYS = Set.of("llm");
+    private static final Set<String> LLM_KEYS = Set.of("minLevel");
     private static final Set<String> AUTONOMY_KEYS =
             Set.of("promoteAfter", "maxPromotion", "demoteOnFailure", "maxDemotion");
 
@@ -135,7 +138,8 @@ public final class PolicyLoader {
                 ? AllowList.NONE
                 : allowList(map(doc.get("allowList"), "allowList"));
 
-        return new Policy(environment, weights, thresholds, environments, actions, allowList, autonomy(doc));
+        return new Policy(environment, weights, thresholds, environments, actions, allowList, llmMinLevel(doc),
+                autonomy(doc));
     }
 
     // autonomy: earned-autonomy rules; each key is optional and falls back to AutonomyRules.DEFAULT
@@ -155,6 +159,23 @@ public final class PolicyLoader {
 
     private static int intOr(Map<String, Object> yaml, String key, int fallback) {
         return yaml.get(key) == null ? fallback : integer(yaml.get(key), "autonomy." + key);
+    }
+
+    // diagnosis.llm.minLevel: the floor for actions the LLM proposes (null = the policy default)
+    private static AutonomyLevel llmMinLevel(Map<String, Object> doc) {
+        if (doc.get("diagnosis") == null) {
+            return null;
+        }
+        Map<String, Object> diagnosis = map(doc.get("diagnosis"), "diagnosis");
+        checkKeys(diagnosis, DIAGNOSIS_KEYS, "diagnosis");
+        if (diagnosis.get("llm") == null) {
+            return null;
+        }
+        Map<String, Object> llm = map(diagnosis.get("llm"), "diagnosis.llm");
+        checkKeys(llm, LLM_KEYS, "diagnosis.llm");
+        Object minLevel = llm.get("minLevel");
+        return minLevel == null ? null
+                : enumValue(AutonomyLevel.class, text(minLevel, "diagnosis.llm.minLevel"), "diagnosis.llm.minLevel");
     }
 
     private static AllowList allowList(Map<String, Object> yaml) {

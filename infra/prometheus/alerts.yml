@@ -32,3 +32,51 @@ groups:
         annotations:
           summary: "{{ $labels.service }} error rate is high"
           description: "{{ $value | humanizePercentage }} of requests to {{ $labels.container }} returned 5xx over the last minute."
+
+      # p95 response time above 1s over the last minute (scenarios S08-S10).
+      # Needs traffic: with no requests the quantile is NaN and nothing fires.
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum by (service, container, le) (rate(http_server_requests_seconds_bucket{job=~"order-service|inventory-service", uri!~"/actuator.*|/chaos.*"}[1m]))
+          ) > 1
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }} is responding slowly"
+          description: "p95 response time of {{ $labels.container }} is {{ $value | humanizeDuration }} over the last minute."
+
+      # Heap more than half full for 15s (scenarios S11-S12).
+      # Pools with no limit report max = -1, so only pools with a real max count
+      # in the denominator. In G1 that's the old gen, whose max is the heap size.
+      # Why 50% and not 80%: measured on the Compose stack (490 MiB heap), the
+      # /chaos/memory leak uses about 2 MiB of heap per MiB leaked (G1 humongous
+      # regions) and the JVM hits OutOfMemoryError at about 80%. An idle service
+      # sits under 10%, so 50% leaves time to act before the crash.
+      - alert: HighMemory
+        expr: |
+          (
+            sum by (service, container) (jvm_memory_used_bytes{job=~"order-service|inventory-service", area="heap"})
+          /
+            sum by (service, container) (jvm_memory_max_bytes{job=~"order-service|inventory-service", area="heap"} > 0)
+          ) > 0.5
+        for: 15s
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }} heap is almost full"
+          description: "{{ $labels.container }} is using {{ $value | humanizePercentage }} of its heap."
+
+      # Nginx stopped answering /nginx-health for 15s (scenario S18).
+      # Same guard as ServiceDown: only for a gateway that was up in the last
+      # 10 minutes, so it doesn't fire while the stack is still starting.
+      # STRATA opens an incident but never acts on it: nginx is not a heal target.
+      - alert: GatewayDown
+        expr: probe_success{job="gateway"} == 0 and max_over_time(probe_success{job="gateway"}[10m]) == 1
+        for: 15s
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service }} (gateway) is down"
+          description: "{{ $labels.instance }} has not answered for 15s. Every request to the services goes through it."

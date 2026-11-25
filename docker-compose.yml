@@ -6,7 +6,8 @@
 name: strata
 
 services:
-  # The healer. It restarts containers through the Docker socket.
+  # The healer. It restarts, scales out and rolls back containers through
+  # docker-proxy, never through the Docker socket itself (#63).
   strata-healer:
     build: ./strata-healer
     ports:
@@ -20,11 +21,65 @@ services:
       LOKI_URL: http://loki:3100
       # A restarted Spring Boot service needs ~20-30s before it passes 3 checks in a row
       STRATA_VERIFY_TIMEOUT_SECONDS: 90
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      # LLM diagnosis for errors no rule matches (needs the ollama service; see below)
+      STRATA_LLM_ENABLED: "true"
+      OLLAMA_URL: http://ollama:11434
+      STRATA_LLM_MODEL: ${STRATA_LLM_MODEL:-qwen2.5:0.5b}
+      DOCKER_HOST: tcp://docker-proxy:2375
+    networks:
+      - default
+      - docker-api
     depends_on:
       postgres:
         condition: service_healthy
+      docker-proxy:
+        condition: service_started
+
+  # Least privilege for the healer (#63). The Docker socket gives full control of
+  # every container on the machine, so only this proxy mounts it, and it lets
+  # through just the calls the healer's actions make:
+  #   GET  /containers/json, /containers/{id}/json       list and inspect
+  #   POST /containers/{id}/restart|start|stop           restart, scale out, rollback
+  #   POST /containers/create, DELETE /containers/{id}   scale out and rollback (new copy, old one removed)
+  #   POST /networks/{id}/connect|disconnect             put a new copy on the service's network
+  # Everything else (exec, images, volumes, build, system, swarm, events...) gets 403.
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    environment:
+      CONTAINERS: 1
+      NETWORKS: 1
+      POST: 1
+      ALLOW_RESTARTS: 1
+      ALLOW_START: 1
+      ALLOW_STOP: 1
+      EVENTS: 0
+      PING: 1
+      VERSION: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker-api
+
+  # Local LLM for diagnosing errors no rule matches (FR3). Optional: start it with
+  # `docker compose --profile llm up`. Without it the healer escalates unknown errors to a human.
+  ollama:
+    image: ollama/ollama:0.12.6
+    profiles: [llm]
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+
+  # Downloads the model once (kept in the ollama-models volume), then exits.
+  ollama-pull:
+    image: ollama/ollama:0.12.6
+    profiles: [llm]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["ollama", "pull", "${STRATA_LLM_MODEL:-qwen2.5:0.5b}"]
+    depends_on:
+      - ollama
+    restart: on-failure
 
   postgres:
     image: postgres:16-alpine
@@ -61,6 +116,15 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  # Probes Nginx for Prometheus (#45, S18). Nginx has no metrics endpoint of its own,
+  # so Prometheus asks this exporter to GET /nginx-health and reads probe_success.
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.27.0
+    command:
+      - --config.file=/etc/blackbox/blackbox.yml
+    volumes:
+      - ./infra/blackbox:/etc/blackbox:ro
 
   alertmanager:
     image: prom/alertmanager:v0.28.1
@@ -162,3 +226,10 @@ volumes:
   prometheus-data:
   loki-data:
   grafana-data:
+  ollama-models:
+
+networks:
+  # Only the healer and docker-proxy are on this network, and it has no route
+  # out, so nothing else can reach the proxy.
+  docker-api:
+    internal: true

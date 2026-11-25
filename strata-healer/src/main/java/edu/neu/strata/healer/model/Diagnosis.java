@@ -9,15 +9,23 @@ import java.util.Objects;
  * @param proposedAction the action to take
  * @param target         the container or service the action applies to
  * @param confidence     how sure the diagnosis is, from 0.0 to 1.0 (a risk factor)
+ * @param source         whether a rule or the LLM produced it
  */
-public record Diagnosis(String ruleId, ActionType proposedAction, String target, double confidence) {
+public record Diagnosis(String ruleId, ActionType proposedAction, String target, double confidence,
+                        DiagnosisSource source) {
 
     public Diagnosis {
+        Objects.requireNonNull(source, "source");
         ruleId = Alert.requireText(ruleId, "ruleId");
         Objects.requireNonNull(proposedAction, "proposedAction");
         target = Alert.requireText(target, "target");
         if (Double.isNaN(confidence) || confidence < 0.0 || confidence > 1.0) {
             throw new IllegalArgumentException("confidence must be between 0.0 and 1.0, was " + confidence);
         }
+    }
+
+    /** A diagnosis from a rule in {@code rules.yaml}. */
+    public Diagnosis(String ruleId, ActionType proposedAction, String target, double confidence) {
+        this(ruleId, proposedAction, target, confidence, DiagnosisSource.RULE);
     }
 }

@@ -4,6 +4,8 @@ package edu.neu.strata.healer.audit;
 public enum AuditEventType {
     /** An alert opened an incident. */
     INCIDENT_OPENED,
+    /** Log lines that try to instruct the healer were found and withheld from diagnosis (FR4). */
+    INJECTION_SUSPECTED,
     /** The diagnosis stage proposed an action. */
     DIAGNOSIS,
     /** The action validator allowed or rejected the proposed action. */
@@ -16,6 +18,7 @@ public enum AuditEventType {
     EXECUTION,
     /** The recovery check's result. */
     VERIFICATION,
+    UNDO,
     /** The action's trust record changed. */
     TRUST_UPDATE,
     /** An action's earned autonomy changed: it was promoted or demoted a level (FR10). */
