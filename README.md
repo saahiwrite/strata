@@ -76,7 +76,7 @@ strata/
   strata-healer/          The STRATA healer (Spring Boot, Java 21)
     src/main/java/edu/neu/strata/healer/
       model/              Shared types between the stages: Alert, Diagnosis, ActionType, AutonomyLevel, RiskAssessment, ExecutionResult
-      api/                REST endpoints: Alertmanager webhook, incidents, audit and trust; security counts (in review, #65); approvals (planned, #50)
+      api/                REST endpoints: Alertmanager webhook, incidents, audit and trust; security counts; approvals (ApprovalController)
       detection/          Turns incoming alerts into incidents (AlertParser, IncidentService)
       diagnosis/          RuleMatcher (rules.yaml) and LokiLogClient; Diagnoser chain, LlmDiagnoser and OllamaClient (in review, #58)
       validation/         ActionValidator (allow-list); LogScreen for prompt injection (in review, #65)
@@ -85,7 +85,7 @@ strata/
       verification/       PrometheusClient and PrometheusRecoveryVerifier
       trust/              TrustService: per-action successes, failures and earned-autonomy standing
       audit/              Hash-chained audit log (HashChain, AuditLogService); InjectionReport (in review, #65)
-      orchestration/      HealingOrchestrator; split into DiagnosisStage, AssessmentStage, ExecutionStage and IncidentLifecycle (in review, #67)
+      orchestration/      HealingOrchestrator; split into DiagnosisStage, AssessmentStage, ExecutionStage and IncidentLifecycle; ApprovalService for L2 decisions
       persistence/        Database access: read repositories and write stores (Spring JDBC)
       dashboard/          Thymeleaf dashboard (planned, #44)
     src/main/resources/
@@ -154,7 +154,7 @@ curl http://localhost:9000/api/trust
 
 On a fresh clone the healer restarted order-service about 25 s after the crash, and the incident showed `RESOLVED` about 20 s after that.
 
-**Secondary use case (bad deployment → rollback with approval):** the rollback action is merged (#66), but injecting a bad deployment (#41), approving it (#50) and the dashboard (#44) are still being built. The commands will be `./scenarios/inject.sh scenario S14`, then approving the pending rollback on `http://localhost:9000/dashboard`.
+**Secondary use case (bad deployment → rollback with approval):** the rollback action (#66) and the approval API (#71) are merged, but injecting a bad deployment (#41) and the dashboard (#44) are still being built. The commands will be `./scenarios/inject.sh scenario S14`, then approving the pending rollback on `http://localhost:9000/dashboard`. Until the dashboard exists, `GET /api/approvals` lists what is waiting and `POST /api/approvals/{id}/approve` (or `/deny`) answers it.
 
 **Other places to look:** Grafana on `http://localhost:3000` (STRATA dashboard, no login needed), Prometheus on `:9090`, Alertmanager on `:9093`. `./scenarios/inject.sh list` prints every scenario.
 
@@ -184,17 +184,17 @@ On macOS with Colima instead of Docker Desktop, clone the repo somewhere under y
 | FR5: Score each action by blast radius, reversibility, environment, diagnosis confidence and past failures | Complete | `policy/RiskScorer`, `policy/PolicyLoader`, `policy.yaml` |
 | FR6: Map the score to L0 auto, L1 auto with undo, L2 approval, L3 human only | Complete | `policy/RiskScorer`, `thresholds` and `minLevel` in `policy.yaml`, `model/AutonomyLevel`, `orchestration/HealingOrchestrator`. **In review:** every LLM proposal needs approval (`diagnosis.llm.minLevel`, #58) |
 | FR7: Support restart, scale out and rollback | Complete | `execution/DockerActionExecutor` (restart), `execution/ScaleOutAction` (up to 3 instances), `execution/RollbackAction` (canary: one instance first, verified, then the rest), `execution/CooldownGuard`; rules `HighLatency → SCALE_OUT` and `HighErrorRate` after a deploy `→ ROLLBACK` (#66). Tested with a mocked Docker client so far |
-| FR8: For L2, show a preview, wait for approval, fall back to a safe action on timeout | Partial | L2 decisions are saved as `AWAITING_APPROVAL` and audited. Approve/deny API and timeout fallback: #50 (not started); dashboard buttons: #44 (not started) |
-| FR9: Verify recovery; roll back and escalate if the service did not recover | Partial | `verification/PrometheusRecoveryVerifier`, `verification/PrometheusClient`; a failed check escalates and counts as a trust failure. **In review (#68):** undo a scale out that didn't help, with an `UNDO` audit entry |
+| FR8: For L2, show a preview, wait for approval, fall back to a safe action on timeout | Complete | `orchestration/ApprovalService` and `api/ApprovalController` (#71): `GET /api/approvals` shows each waiting decision with a one-line preview, its risk and when it expires; `POST /api/approvals/{id}/approve` runs it, `/deny` hands the incident to a human. A decision can be answered once. With no answer after 30 minutes (`strata.approval.timeout-minutes`) it goes to a human and never runs on its own. Every answer is audited. Tested with `ApprovalServiceTest`, `ApprovalControllerTest` and `RollbackApprovalIT`. The dashboard buttons are #44 |
+| FR9: Verify recovery; roll back and escalate if the service did not recover | Partial | `verification/PrometheusRecoveryVerifier`, `verification/PrometheusClient`; a failed check escalates and counts as a trust failure. When the service doesn't recover, `ExecutionStage` undoes a scale out (`ScaleOutAction.undo` stops and removes the new instance) and writes an `UNDO` audit entry (#68). A restart can't be undone and a rollback that didn't help is left as it is; both are escalated |
 | FR10: Promote or demote each action's level from its success record | Partial | `trust/TrustService`, `trust/TrustRecord`, `GET /api/trust` (successes and failures feed the past-failures factor). **In review (#69):** `policy/AutonomyRules`, the `autonomy` section of `policy.yaml`, `AUTONOMY_CHANGE` audit entries, migration V3 |
 | FR11: Write every decision to a tamper-evident audit log | Complete | `audit/HashChain`, `audit/AuditLogService`, `persistence/AuditLogRepository`, `GET /api/audit`, `GET /api/audit/verify` |
 | FR12: Show incidents, approvals and action levels on a dashboard | Partial | JSON API: `api/IncidentController`, `api/AuditController`, `api/TrustController`. Thymeleaf dashboard: #44 (not started) |
 
-**Working end to end:** the primary use case (S01, crash → automatic restart), from `docker compose up --build` and in `CrashRecoveryIT`. The secondary use case (rollback with approval) needs #41, #50 and #44; `scenarios/demo.sh` (#59) will run both.
+**Working end to end:** the primary use case (S01, crash → automatic restart), from `docker compose up --build` and in `CrashRecoveryIT`. The secondary use case (rollback with approval) needs #41 and #44; `scenarios/demo.sh` (#59) will run both.
 
 **Benchmark (Phase 1 evaluation):** 18 scenarios in `scenarios/README.md`; S01-S12 can be injected today. The harness that runs them three ways and measures MTTR, auto-resolution rate, false-fix rate, approvals per incident and injection block rate is #46.
 
-**Merge order for the open healer PRs:** #58 → #65 → #67 → #68 (each builds on the one before); #69 and #40 are independent.
+**Open healer PR:** #69 (earned autonomy) is independent of the rest.
 
 ## Scope and Design Changes Since Phase 1
 
@@ -211,6 +211,7 @@ On macOS with Colima instead of Docker Desktop, clone the repo somewhere under y
 | Ollama runs under a Compose profile (`--profile llm`), not by default | The model is a ~400 MB download and answers in 2-8 s on a laptop CPU; without it the healer still works and escalates unknown errors to a human |
 | Suspicious log lines are withheld and the LLM is skipped for that incident (#65) | Phase 1 says logs are untrusted; never showing hostile text to the model is safer than trusting the model to ignore it. Rules still run, so a crash still heals |
 | Earned autonomy is bounded: at most one level of promotion and two of demotion, never below an action's `minLevel`, never out of L3 (#69) | The research question needs autonomy that moves with results, but a rollback must always need approval and an L3 action must never run automatically |
+| An unanswered approval goes to a human after 30 minutes and never runs on its own (#71) | A safe fallback for "nobody is looking" is to stop, not to act; the incident stays visible as escalated |
 | A rollback runs on one instance first and stops if it doesn't recover; a failed rollback is escalated, not undone (#66, #68) | Phase 1's "one instance first"; going back to the broken image would not be safer than asking a human |
 | `HighMemory` fires at 50% heap, not 80% (#40) | On the real stack the JVM ran out of memory at about 80% heap (the leak's 1 MiB chunks cost about 2 MiB each), so an 80% alert never fired before the crash |
 | Nginx going down (S18) opens an incident but is never healed (L3, human only) | Nginx is shared by every service and is not in the allow-list, so restarting it automatically would have the largest blast radius in the system |
@@ -221,8 +222,8 @@ On macOS with Colima instead of Docker Desktop, clone the repo somewhere under y
 | Pattern / Principle | Where | Why |
 |---|---|---|
 | Layered architecture / separation of concerns | `api` → `orchestration` → stage packages (`detection`, `diagnosis`, `validation`, `policy`, `execution`, `verification`, `trust`, `audit`) → `persistence` | Controllers only parse requests and call services; each package owns one stage of the healing loop, so a change to risk scoring never touches Docker code (high cohesion, low coupling) |
-| Pipeline (fixed sequence of stages) | `orchestration/HealingOrchestrator`; separate `DiagnosisStage`, `AssessmentStage`, `ExecutionStage` (in review, #67) | Every incident goes through the same ordered stages, so no path can skip validation or the audit log |
-| State (explicit transition table) | `orchestration/IncidentLifecycle` (in review, #67) | One place changes an incident's status or a decision's outcome, and illegal moves (closing twice, recovering without executing) are rejected |
+| Pipeline (fixed sequence of stages) | `orchestration/HealingOrchestrator`; separate `DiagnosisStage`, `AssessmentStage`, `ExecutionStage` (#67) | Every incident goes through the same ordered stages, so no path can skip validation or the audit log |
+| State (explicit transition table) | `orchestration/IncidentLifecycle` (#67) | One place changes an incident's status or a decision's outcome, and illegal moves (closing twice, recovering without executing) are rejected |
 | Chain of Responsibility | `diagnosis/DiagnosisChain` over `RuleMatcher` and `LlmDiagnoser` (in review, #58) | "Rules first, LLM only when no rule matches" is the order of the chain; `withoutLlm()` gives the same chain minus the LLM when the logs look tampered with (#65) |
 | Strategy / Dependency Inversion | `execution/ActionExecutor`, `verification/RecoveryVerifier`, `diagnosis/Diagnoser`, `diagnosis/LlmClient` | The orchestrator depends on interfaces, not on Docker, Prometheus or Ollama; tests swap in fakes, and another model server would be one new class |
 | Delegation per action | `DockerActionExecutor` hands `SCALE_OUT` to `ScaleOutAction` and `ROLLBACK` to `RollbackAction` | Each action's Docker steps (and its undo, #68) live in one small class |
@@ -237,16 +238,18 @@ On macOS with Colima instead of Docker Desktop, clone the repo somewhere under y
 
 ## Testing
 
-- **Unit tests (JUnit 5, Mockito, MockMvc), on `main`:** 179 in `strata-healer`, covering:
+- **Unit tests (JUnit 5, Mockito, MockMvc), on `main`:** 311 in `strata-healer`, covering:
   - shared types, policy loader, risk scorer, allow-list and action validator
   - hash chain, and the audit log service including tampering and 40 concurrent appends
   - schema migrations, trust, API, webhook, alert parser, incidents
   - rule matcher, cooldown, Docker executor, scale out, rollback with canary, execution wiring
+  - the orchestrator stages and incident lifecycle (every allowed and refused move), undo of a failed scale out, and the approval service and API (approve, deny, answered twice, unknown id, timeout)
+  - diagnosis chain, LLM diagnoser and Ollama client, log screen and injection report
   - Loki client, orchestrator, Prometheus client and recovery verifier
 
   The target services have 23 each in `order-service` and `inventory-service` (API, metrics, JSON logging, every chaos switch). The persistence tests run the real Flyway migrations on H2 in PostgreSQL mode.
-- **Integration tests (Testcontainers):** `CrashRecoveryIT` kills a real container, posts a `ServiceDown` alert and checks that the healer restarts it, resolves the incident and keeps the audit chain valid, on real PostgreSQL. **In review:** `PromptInjectionIT` (#65) runs S15 and S16 through the whole healer with the LLM switched on. It also covers a line the screen misses and a malformed model reply, and checks that nothing ever runs.
-- **In open PRs:** `LlmDiagnoserTest`, `OllamaClientTest` and `DiagnosisChainTest` (#58); `LogScreenTest` with 16 malicious and 13 ordinary lines, and `InjectionReportTest` (#65); `IncidentLifecycleTest`, the stage tests and `OrchestrationDesignTest` (#67); undo tests (#68); `AutonomyRulesTest` and earned-autonomy cases in the trust, scorer and orchestrator tests (#69). #68 reports 293 healer unit tests with #58, #65 and #67 included.
+- **Integration tests (Testcontainers):** `CrashRecoveryIT` kills a real container, posts a `ServiceDown` alert and checks that the healer restarts it, resolves the incident and keeps the audit chain valid, on real PostgreSQL. `PromptInjectionIT` (#65) runs S15 and S16 through the whole healer with the LLM switched on. It also covers a line the screen misses and a malformed model reply, and checks that nothing ever runs. `RollbackApprovalIT` (#71) fires a rollback alert, checks that it waits, approves one decision and denies another, and checks that each can be answered only once (Docker, Loki and the verifier are faked).
+- **In open PRs:** `AutonomyRulesTest` and earned-autonomy cases in the trust, scorer and orchestrator tests (#69).
 - **Monitoring config:** promtool unit tests for the alert rules (`infra/prometheus/tests/alerts-test.yml`), including cases that must stay quiet (a service still starting, errors below the threshold); CI also checks the Prometheus and Alertmanager configs and `docker-compose.yml`. #40 adds tests for `HighLatency` and `HighMemory`.
 - **Live check of the LLM:** the prompt was run against `qwen2.5:0.5b` in Ollama for S17 (unknown error → `RESTART`, which waits for approval), an `OutOfMemoryError` (→ `RESTART`) and S15 (→ a malformed reply, which is refused). The real replies are kept as test cases.
 - **Coverage:** a JaCoCo report in CI is being added (#47).
@@ -263,8 +266,8 @@ docker run --rm -v "$PWD/infra/prometheus:/p" -w /p/tests --entrypoint promtool 
 
 ## Known Issues
 
-- An L2 decision stops at `AWAITING_APPROVAL` with no way to approve or deny it yet (approval API #50, dashboard #44), so the secondary use case doesn't run end to end yet.
-- Scale out and rollback have only been tested with a mocked Docker client, not on the running Compose stack; the bad-deploy image they roll back from is #41.
+- The approval API has no login, so the `by` name in an approval is only recorded in the audit log. "Already answered" is tracked in memory, so it assumes one healer instance, and a restart in the middle of an approved run puts the decision back to waiting. The dashboard buttons are #44.
+- Scale out, rollback, undo and approval have only been tested with a mocked Docker client (`RollbackApprovalIT` fakes Docker too), not on the running Compose stack; the bad-deploy image they roll back from is #41.
 - On `main`, an error no rule matches is escalated to a human, because LLM diagnosis is still in review (#58).
 - The small local model is overconfident (it answered 0.9-1.0 for guesses) and can be steered by log text. The cap, the target lock, the approval floor and the injection screen are there because of this; a larger model is a configuration change (`STRATA_LLM_MODEL`).
 - The injection screen is pattern based, so a reworded instruction can get past it. The later checks still block it (tested in `PromptInjectionIT`), but the screen alone isn't enough.
@@ -281,7 +284,7 @@ docker run --rm -v "$PWD/infra/prometheus:/p" -w /p/tests --entrypoint promtool 
 |---|---|
 | Nida Esen | _To be filled in._ Assigned: #41 bad-deploy image, #42 chaos log switch, #43 traffic spike, #44 dashboard, #59 demo script, #60 shared chaos module |
 | Shivani Radhakrishnan | **Healer in Compose and CI (#38):** added the services, Nginx and the healer to Compose, `CrashRecoveryIT` and the GitHub Actions CI; followed the README from a fresh clone and fixed two bugs it found (`ServiceDown` firing while services were still starting, and a 30 s recovery timeout that marked good restarts as failures). **In review (#40):** `HighLatency` and `HighMemory` alert rules with promtool tests, and why 50% heap rather than 80%. Assigned: #45, #46, #47, #48, #63 |
-| Madhuri Hegde | **Scale out and rollback (#66):** `ScaleOutAction`, `RollbackAction` with a canary, `ComposeServices`, `ContainerCloner`, the new rules in `rules.yaml` and the allow-list; `ScaleOutActionTest`, `RollbackActionTest`, `ExecutionWiringTest`. **In review:** the orchestrator split into stages with `IncidentLifecycle` and `DecisionOutcome` (#67); undo of a failed scale out with `UNDO` audit entries (#68). Assigned: #50 |
+| Madhuri Hegde | **Scale out and rollback (#66):** `ScaleOutAction`, `RollbackAction` with a canary (one instance first, then the rest), `ComposeServices`, `ContainerCloner`, the new rules in `rules.yaml` and the allow-list; `ScaleOutActionTest`, `RollbackActionTest`, `ExecutionWiringTest`.<br>**Orchestrator stages and incident lifecycle (#67):** split `HealingOrchestrator` into `DiagnosisStage`, `AssessmentStage` and `ExecutionStage`, with `IncidentLifecycle` as the one place that changes an incident's status or a decision's outcome (a transition table that rejects illegal moves) and the `DecisionOutcome` enum; `IncidentLifecycleTest`, the stage tests and `OrchestrationDesignTest`.<br>**Undo when recovery fails (#68):** `ActionExecutor.undo`, `ScaleOutAction.undo`, the `created` field on `ExecutionResult` and an `UNDO` audit entry; a restart and a rollback that didn't help are escalated, not undone.<br>**L2 approval workflow (#71):** `ApprovalService` and `ApprovalController` (`GET /api/approvals`, `POST /api/approvals/{id}/approve` and `/deny`), single-use answers, a 30-minute timeout that hands the incident to a human, and `ApprovalServiceTest`, `ApprovalControllerTest` and `RollbackApprovalIT`.<br>Also fixed the allow-list tests that scale out and rollback broke (`HealingOrchestratorTest`, `PromptInjectionIT`). |
 | Saahithi Mallarapu | Planned Phase 3 (milestone and issues #41-#64) and wrote this README (feature status, scope changes, design patterns, diagrams, testing, known issues). **In review:** LLM diagnosis with Ollama (`Diagnoser`, `DiagnosisChain`, `LlmDiagnoser`, `OllamaClient`, the LLM approval floor in the policy, Ollama in Compose, and a live check against the real model) (#58); prompt-injection defense (`LogScreen`, `INJECTION_SUSPECTED`, `InjectionReport`, `GET /api/security/injections`, `PromptInjectionIT`) (#65); earned autonomy (`AutonomyRules`, the `autonomy` policy section, migration V3, `AUTONOMY_CHANGE` audit entries) (#69). Assigned: #62, #64, and the submission (#55) |
 
 <details>
