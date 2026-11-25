@@ -5,6 +5,17 @@ spring:
   application:
     name: strata-healer
 
+# The healer's own metrics (#64): incidents, MTTR, decisions per level, approvals and
+# each action's earned autonomy, scraped by Prometheus as job strata-healer.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  metrics:
+    tags:
+      application: strata-healer
+
 strata:
   loki:
     url: ${LOKI_URL:http://loki:3100}
