@@ -1,0 +1,16 @@
+mode,scenario,incident,alert,service,action,level,decision,status,detect_s,close_s
+full,S01,1,ServiceDown,order-service,RESTART,L0_AUTO,RECOVERED,RESOLVED,13,38
+full,S02,2,ServiceDown,inventory-service,RESTART,L0_AUTO,RECOVERED,RESOLVED,20,35
+full,S03,3,ServiceDown,order-service,RESTART,L0_AUTO,RECOVERED,RESOLVED,14,30
+full,S03,4,ServiceDown,inventory-service,RESTART,L0_AUTO,RECOVERED,RESOLVED,14,40
+full,S04,5,ServiceDown,order-service,RESTART,L0_AUTO,RECOVERED,RESOLVED,14,30
+full,S04,6,ServiceDown,order-service,RESTART,L0_AUTO,HANDED_TO_HUMAN,ESCALATED,74,79
+full,S05,7,HighErrorRate,order-service,,,,ESCALATED,40,45
+full,S06,,,,,,,NO_INCIDENT,,
+full,S07,,,,,,,NO_INCIDENT,,
+full,S08,8,HighLatency,order-service,SCALE_OUT,L0_AUTO,RECOVERED,RESOLVED,39,49
+full,S09,9,HighLatency,inventory-service,SCALE_OUT,L0_AUTO,RECOVERED,RESOLVED,42,59
+full,S10,10,HighLatency,order-service,SCALE_OUT,L0_AUTO,FAILED,ESCALATED,33,146
+full,S10,11,HighErrorRate,order-service,,,,ESCALATED,53,60
+full,S11,12,ServiceDown,order-service,RESTART,L0_AUTO,RECOVERED,RESOLVED,34,69
+full,S12,13,HighMemory,inventory-service,,,,ESCALATED,55,62

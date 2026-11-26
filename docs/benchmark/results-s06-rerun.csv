@@ -1,0 +1,2 @@
+mode,scenario,incident,alert,service,action,level,decision,status,detect_s,close_s
+full,S06,13,HighErrorRate,inventory-service,,,,ESCALATED,39,49
