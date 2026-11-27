@@ -17,6 +17,7 @@ import java.util.Objects;
  * @param actions      risk values of each action the policy knows
  * @param allowList    the actions and targets STRATA may ever run (FR4)
  * @param llmMinLevel  the least cautious level an LLM diagnosis may get, whatever its score
+ * @param autonomy     how each action's level moves with its results (FR10)
  */
 public record Policy(
         String environment,
@@ -25,7 +26,8 @@ public record Policy(
         Map<String, Double> environments,
         Map<ActionType, ActionPolicy> actions,
         AllowList allowList,
-        AutonomyLevel llmMinLevel) {
+        AutonomyLevel llmMinLevel,
+        AutonomyRules autonomy) {
 
     /** The weights must add up to this, so the score is 0-100. */
     public static final int TOTAL_WEIGHT = 100;
@@ -66,9 +68,10 @@ public record Policy(
         actions = actions == null || actions.isEmpty() ? Map.of() : Map.copyOf(new EnumMap<>(actions));
         allowList = allowList == null ? AllowList.NONE : allowList;
         llmMinLevel = llmMinLevel == null ? DEFAULT_LLM_MIN_LEVEL : llmMinLevel;
+        autonomy = autonomy == null ? AutonomyRules.DEFAULT : autonomy;
     }
 
-    /** A policy with the default LLM floor ({@link #DEFAULT_LLM_MIN_LEVEL}). */
+    /** A policy with the default LLM floor and earned-autonomy rules. */
     public Policy(
             String environment,
             Map<RiskFactor, Integer> weights,
@@ -76,7 +79,8 @@ public record Policy(
             Map<String, Double> environments,
             Map<ActionType, ActionPolicy> actions,
             AllowList allowList) {
-        this(environment, weights, thresholds, environments, actions, allowList, DEFAULT_LLM_MIN_LEVEL);
+        this(environment, weights, thresholds, environments, actions, allowList, DEFAULT_LLM_MIN_LEVEL,
+                AutonomyRules.DEFAULT);
     }
 
     /** A policy without an allow-list (so nothing may run); handy for scoring-only tests. */
@@ -86,7 +90,8 @@ public record Policy(
             Thresholds thresholds,
             Map<String, Double> environments,
             Map<ActionType, ActionPolicy> actions) {
-        this(environment, weights, thresholds, environments, actions, AllowList.NONE, DEFAULT_LLM_MIN_LEVEL);
+        this(environment, weights, thresholds, environments, actions, AllowList.NONE, DEFAULT_LLM_MIN_LEVEL,
+                AutonomyRules.DEFAULT);
     }
 
     public int weight(RiskFactor factor) {

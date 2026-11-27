@@ -133,6 +133,40 @@ class RiskScorerTest {
                 .isEqualTo(AutonomyLevel.L2_APPROVAL);
     }
 
+    @Test
+    void earnedPromotionMakesAnL1RestartRunWithoutUndo() {
+        Diagnosis restart = diagnosis(ActionType.RESTART, 0.95);
+        RiskAssessment scored = scorer.assess(restart, ActionHistory.NONE, "production");
+        RiskAssessment promoted = scorer.assess(restart, new ActionHistory(5, 0, -1), "production");
+
+        assertThat(scored.level()).isEqualTo(AutonomyLevel.L1_AUTO_UNDO);
+        assertThat(promoted.level()).isEqualTo(AutonomyLevel.L0_AUTO);
+        assertThat(promoted.score()).isEqualTo(scored.score());
+    }
+
+    @Test
+    void promotionNeverGoesBelowTheActionsMinLevel() {
+        // Rollback's minLevel is L2: an engineer approves every rollback, however well rollbacks went
+        RiskAssessment risk = scorer.assess(diagnosis(ActionType.ROLLBACK, 0.95), new ActionHistory(20, 0, -1));
+
+        assertThat(risk.level()).isEqualTo(AutonomyLevel.L2_APPROVAL);
+    }
+
+    @Test
+    void promotionNeverTakesAnythingOutOfL3() {
+        Diagnosis unknown = new Diagnosis("rule", ActionType.RESTART, "order-service", 0.0);
+        Policy risky = policy(Map.of(ActionType.RESTART, new ActionPolicy(1.0, 1.0, AutonomyLevel.L0_AUTO)));
+
+        assertThat(new RiskScorer(risky).assess(unknown, new ActionHistory(9, 0, -1), "production").level())
+                .isEqualTo(AutonomyLevel.L3_HUMAN_ONLY);
+    }
+
+    @Test
+    void demotionMakesARestartMoreCautious() {
+        assertThat(scorer.assess(diagnosis(ActionType.RESTART, 0.95), new ActionHistory(3, 1, 2)).level())
+                .isEqualTo(AutonomyLevel.L2_APPROVAL);
+    }
+
     private static Diagnosis llmDiagnosis(ActionType action, double confidence) {
         return new Diagnosis("llm:test", action, "order-service", confidence, DiagnosisSource.LLM);
     }
@@ -150,7 +184,8 @@ class RiskScorerTest {
     @Test
     void llmFloorNeverLowersAStricterLevel() {
         Policy lenient = new Policy(POLICY.environment(), POLICY.weights(), POLICY.thresholds(),
-                POLICY.environments(), POLICY.actions(), POLICY.allowList(), AutonomyLevel.L0_AUTO);
+                POLICY.environments(), POLICY.actions(), POLICY.allowList(), AutonomyLevel.L0_AUTO,
+                POLICY.autonomy());
         RiskScorer lenientScorer = new RiskScorer(lenient);
 
         assertThat(lenientScorer.assess(llmDiagnosis(ActionType.RESTART, 0.6), ActionHistory.NONE).level())

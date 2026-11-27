@@ -275,6 +275,52 @@ class HealingOrchestratorTest {
         assertThat(incidents.findOpen("order-service", "ServiceDown")).isEmpty();
     }
 
+    /** The bundled policy, but in production, where a restart scores L1 (auto with undo). */
+    private static Policy productionPolicy() throws Exception {
+        try (var in = HealingOrchestratorTest.class.getResourceAsStream("/policy.yaml")) {
+            String yaml = new String(in.readAllBytes(), StandardCharsets.UTF_8)
+                    .replace("environment: local", "environment: production");
+            return new PolicyLoader().load(new ByteArrayInputStream(yaml.getBytes(StandardCharsets.UTF_8)), "test");
+        }
+    }
+
+    private String decisionLevel(long incidentId) {
+        return jdbc.sql("SELECT autonomy_level FROM decisions WHERE incident_id = ?").param(incidentId)
+                .query(String.class).single();
+    }
+
+    /** Heals a crash of a fresh container (each its own, so the cooldown never blocks) and returns its level. */
+    private String healCrash(HealingOrchestrator orchestrator, int n) {
+        Incident incident = open(alert("ServiceDown", "strata-order-service-" + n));
+        orchestrator.heal(incident);
+        return decisionLevel(incident.id());
+    }
+
+    @Test
+    void restartEarnsAutonomyAndLosesItAfterAFailure() throws Exception {
+        HealingOrchestrator orchestrator = orchestrator(productionPolicy());
+
+        for (int n = 1; n <= 5; n++) {
+            assertThat(healCrash(orchestrator, n)).as("crash %d", n).isEqualTo("L1_AUTO_UNDO");
+        }
+        // five verified restarts in a row: restart is promoted one level
+        assertThat(trust.get(ActionType.RESTART).levelShift()).isEqualTo(-1);
+        assertThat(healCrash(orchestrator, 6)).isEqualTo("L0_AUTO");
+
+        when(verifier.verify(anyString(), any())).thenReturn(false);
+        assertThat(healCrash(orchestrator, 7)).isEqualTo("L0_AUTO");
+        // the failed restart takes the promotion away again
+        when(verifier.verify(anyString(), any())).thenReturn(true);
+        assertThat(healCrash(orchestrator, 8)).isEqualTo("L1_AUTO_UNDO");
+
+        List<String> changes = audit.latest(500).stream()
+                .filter(e -> e.eventType() == AuditEventType.AUTONOMY_CHANGE).map(AuditEntry::payload).toList();
+        assertThat(changes).hasSize(2);
+        assertThat(changes.get(1)).contains("PROMOTED");   // newest first
+        assertThat(changes.get(0)).contains("DEMOTED");
+        assertThat(audit.verify().valid()).isTrue();
+    }
+
     /** Rules first, then an LLM that always gives {@code reply}. */
     private static Diagnoser rulesThenLlm(String reply) {
         LlmClient llm = new LlmClient() {

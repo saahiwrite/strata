@@ -21,6 +21,8 @@ public enum AuditEventType {
     UNDO,
     /** The action's trust record changed. */
     TRUST_UPDATE,
+    /** An action's earned autonomy changed: it was promoted or demoted a level (FR10). */
+    AUTONOMY_CHANGE,
     /** The incident was resolved or escalated. */
     INCIDENT_CLOSED
 }

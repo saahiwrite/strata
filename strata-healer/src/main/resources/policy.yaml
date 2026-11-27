@@ -51,6 +51,16 @@ diagnosis:
   llm:
     minLevel: L2_APPROVAL
 
+# Earned autonomy (FR10): an action's level moves with its results. A run of promoteAfter
+# successes makes it one level less cautious than its score gives (at most maxPromotion levels);
+# each failure makes it demoteOnFailure levels more cautious (at most maxDemotion) and starts the
+# run again. A promotion never goes below an action's minLevel and never moves anything out of L3.
+autonomy:
+  promoteAfter: 5
+  maxPromotion: 1
+  demoteOnFailure: 1
+  maxDemotion: 2
+
 # The only actions STRATA may run, and the only containers/services it may run them
 # on (FR4). Anything else a diagnosis proposes is rejected before it is scored.
 # A target is an exact name, or a name ending in * (matches every name starting with

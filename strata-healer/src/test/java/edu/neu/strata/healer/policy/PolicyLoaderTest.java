@@ -192,6 +192,35 @@ class PolicyLoaderTest {
     }
 
     @Test
+    void autonomyDefaultsWhenNotSet() {
+        assertThat(load(VALID).autonomy()).isEqualTo(AutonomyRules.DEFAULT);
+    }
+
+    @Test
+    void readsAutonomyAndFillsMissingKeysFromTheDefault() {
+        Policy policy = load(VALID + """
+                autonomy:
+                  promoteAfter: 10
+                  maxDemotion: 3
+                """);
+
+        assertThat(policy.autonomy()).isEqualTo(new AutonomyRules(10, AutonomyRules.DEFAULT.maxPromotion(),
+                AutonomyRules.DEFAULT.demoteOnFailure(), 3));
+    }
+
+    @Test
+    void rejectsBadAutonomySettings() {
+        assertRejected(VALID + "autonomy:\n  promoteAfter: 0\n", "promoteAfter");
+        assertRejected(VALID + "autonomy:\n  promoteEvery: 3\n", "promoteEvery");
+        assertRejected(VALID + "autonomy:\n  maxDemotion: lots\n", "maxDemotion");
+    }
+
+    @Test
+    void bundledPolicyHasTheDocumentedAutonomyRules() {
+        assertThat(loader.loadDefault().autonomy()).isEqualTo(new AutonomyRules(5, 1, 1, 2));
+    }
+
+    @Test
     void llmFloorDefaultsToApprovalWhenNotSet() {
         assertThat(load(VALID).llmMinLevel()).isEqualTo(edu.neu.strata.healer.model.AutonomyLevel.L2_APPROVAL);
     }

@@ -2,6 +2,7 @@ package edu.neu.strata.healer.trust;
 
 import edu.neu.strata.healer.audit.AuditLogService;
 import edu.neu.strata.healer.persistence.TrustRepository;
+import edu.neu.strata.healer.policy.Policy;
 import java.time.Clock;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,7 +21,8 @@ public class TrustConfig {
 
     @Bean
     public TrustService trustService(TrustRepository repository, PlatformTransactionManager transactions,
-                                     AuditLogService audit) {
-        return new TrustService(repository, new TransactionTemplate(transactions), audit, Clock.systemUTC());
+                                     AuditLogService audit, Policy policy) {
+        return new TrustService(repository, new TransactionTemplate(transactions), audit, Clock.systemUTC(),
+                policy.autonomy());
     }
 }

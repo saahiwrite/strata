@@ -5,6 +5,7 @@ import edu.neu.strata.healer.audit.AuditLogService;
 import edu.neu.strata.healer.model.ActionType;
 import edu.neu.strata.healer.persistence.TrustRepository;
 import edu.neu.strata.healer.policy.ActionHistory;
+import edu.neu.strata.healer.policy.AutonomyRules;
 import java.time.Clock;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
@@ -20,7 +21,11 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <p>After a verified run the orchestrator calls {@link #recordSuccess} or {@link #recordFailure};
  * the count changes in one transaction and a {@code TRUST_UPDATE} entry goes to the audit log
  * once it has committed. {@link #history} is what {@code RiskScorer} takes for its past-failures
- * factor. The counts are all-time for now; Phase 3's earned autonomy can add a window on top.
+ * factor and its earned-autonomy shift.
+ *
+ * <p>Earned autonomy (FR10): every result also moves the action's standing by the policy's
+ * {@link AutonomyRules}. When that promotes or demotes the action a level, an {@code AUTONOMY_CHANGE}
+ * entry goes to the audit log as well, so every change in how freely STRATA acts is on record.
  */
 public class TrustService {
 
@@ -28,9 +33,17 @@ public class TrustService {
     private final TransactionTemplate transactions;
     private final AuditLogService audit;
     private final Clock clock;
+    private final AutonomyRules autonomy;
     private final ReentrantLock writeLock = new ReentrantLock();
 
+    /** A trust service with the default earned-autonomy rules. */
     public TrustService(TrustRepository repository, TransactionTemplate transactions, AuditLogService audit, Clock clock) {
+        this(repository, transactions, audit, clock, AutonomyRules.DEFAULT);
+    }
+
+    public TrustService(TrustRepository repository, TransactionTemplate transactions, AuditLogService audit,
+                        Clock clock, AutonomyRules autonomy) {
+        this.autonomy = Objects.requireNonNull(autonomy, "autonomy");
         this.repository = Objects.requireNonNull(repository, "repository");
         this.transactions = Objects.requireNonNull(transactions, "transactions");
         this.audit = Objects.requireNonNull(audit, "audit");
@@ -70,22 +83,51 @@ public class TrustService {
 
     private TrustRecord record(ActionType action, boolean success, Long incidentId) {
         Objects.requireNonNull(action, "action");
-        TrustRecord updated;
+        Change change;
         writeLock.lock();
         try {
-            updated = transactions.execute(status -> {
-                repository.increment(action, success, clock.instant());
-                return repository.find(action).orElseThrow();
+            change = transactions.execute(status -> {
+                TrustRecord current = repository.findForUpdate(action).orElseGet(() -> TrustRecord.empty(action));
+                AutonomyRules.Standing standing = success
+                        ? autonomy.afterSuccess(current.standing())
+                        : autonomy.afterFailure(current.standing());
+                TrustRecord updated = new TrustRecord(action,
+                        current.successes() + (success ? 1 : 0),
+                        current.failures() + (success ? 0 : 1),
+                        standing.successStreak(), standing.levelShift(), clock.instant());
+                repository.save(updated);
+                return new Change(current, updated);
             });
         } finally {
             writeLock.unlock();
         }
+
+        TrustRecord before = change.before();
+        TrustRecord after = change.after();
         Map<String, Object> details = new LinkedHashMap<>();
         details.put("action", action.name());
         details.put("outcome", success ? "SUCCESS" : "FAILURE");
-        details.put("successes", updated.successes());
-        details.put("failures", updated.failures());
+        details.put("successes", after.successes());
+        details.put("failures", after.failures());
+        details.put("successStreak", after.successStreak());
+        details.put("levelShift", after.levelShift());
         audit.append(AuditEventType.TRUST_UPDATE, incidentId, details);
-        return updated;
+
+        if (after.levelShift() != before.levelShift()) {
+            Map<String, Object> moved = new LinkedHashMap<>();
+            moved.put("action", action.name());
+            moved.put("change", after.levelShift() < before.levelShift() ? "PROMOTED" : "DEMOTED");
+            moved.put("fromShift", before.levelShift());
+            moved.put("toShift", after.levelShift());
+            moved.put("reason", success
+                    ? autonomy.promoteAfter() + " successes in a row"
+                    : "the action failed or the service did not recover");
+            audit.append(AuditEventType.AUTONOMY_CHANGE, incidentId, moved);
+        }
+        return after;
+    }
+
+    /** One action's record before and after a result. */
+    private record Change(TrustRecord before, TrustRecord after) {
     }
 }
