@@ -42,7 +42,9 @@ services:
   #   POST /containers/{id}/restart|start|stop           restart, scale out, rollback
   #   POST /containers/create, DELETE /containers/{id}   scale out and rollback (new copy, old one removed)
   #   POST /networks/{id}/connect|disconnect             put a new copy on the service's network
-  # Everything else (exec, images, volumes, build, system, swarm, events...) gets 403.
+  # Everything else (images, volumes, build, system, swarm, events, /exec/*...) gets 403.
+  # One gap: POST /containers/{id}/exec is allowed (it is under /containers), so an exec
+  # can be created but not started (/exec/{id}/start is 403). See docs/qa/infra-tests.md D-1.
   docker-proxy:
     image: tecnativa/docker-socket-proxy:v0.5.0
     environment:
