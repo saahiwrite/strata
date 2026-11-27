@@ -110,7 +110,7 @@ public class ApprovalService {
     private Waiting take(long decisionId) {
         DecisionRecord record = records.findDecision(decisionId)
                 .orElseThrow(() -> new NoSuchElementException("no decision " + decisionId));
-        if (!DecisionOutcome.AWAITING_APPROVAL.name().equals(record.outcome()) || !taken.add(decisionId)) {
+        if (record.outcome() != DecisionOutcome.AWAITING_APPROVAL || !taken.add(decisionId)) {
             throw new IllegalStateException("decision " + decisionId + " is not waiting for approval any more");
         }
         return waitingFor(record);
@@ -121,7 +121,7 @@ public class ApprovalService {
         Alert alert = new Alert(stored.alertName(), stored.service(), stored.container(), stored.severity(),
                 stored.openedAt());
         Incident incident = new Incident(stored.id(), alert, stored.openedAt());
-        Diagnosis diagnosis = new Diagnosis(record.ruleId(), ActionType.valueOf(record.action()), record.target(),
+        Diagnosis diagnosis = new Diagnosis(record.ruleId(), record.action(), record.target(),
                 record.confidence());
         Decision decision = new Decision(record.id(), record.incidentId(), DecisionOutcome.AWAITING_APPROVAL);
         return new Waiting(incident, diagnosis, decision);
@@ -141,9 +141,9 @@ public class ApprovalService {
 
     private PendingApproval describe(DecisionRecord record) {
         String service = records.findById(record.incidentId()).map(IncidentRecord::service).orElse(null);
-        return new PendingApproval(record.id(), record.incidentId(), service, record.ruleId(), record.action(),
+        return new PendingApproval(record.id(), record.incidentId(), service, record.ruleId(), record.action().name(),
                 record.target(), record.confidence(), record.riskScore(), record.riskFactors(),
-                preview(ActionType.valueOf(record.action()), record.target()),
+                preview(record.action(), record.target()),
                 record.decidedAt(), record.decidedAt().plus(timeout));
     }
 

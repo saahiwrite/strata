@@ -1,5 +1,8 @@
 package edu.neu.strata.healer.persistence;
 
+import edu.neu.strata.healer.model.ActionType;
+import edu.neu.strata.healer.model.AutonomyLevel;
+import edu.neu.strata.healer.model.DecisionOutcome;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
@@ -65,8 +68,9 @@ public class IncidentRepository {
 
     /** Decisions an engineer still has to approve or deny, oldest first. */
     public List<DecisionRecord> findAwaitingApproval() {
-        return jdbc.sql("SELECT " + DECISION_COLUMNS + " FROM decisions WHERE outcome = 'AWAITING_APPROVAL' "
+        return jdbc.sql("SELECT " + DECISION_COLUMNS + " FROM decisions WHERE outcome = ? "
                         + "ORDER BY decided_at, id")
+                .param(DecisionOutcome.AWAITING_APPROVAL.name())
                 .query(IncidentRepository::mapDecision)
                 .list();
     }
@@ -90,16 +94,20 @@ public class IncidentRepository {
                 rs.getLong("id"),
                 rs.getLong("incident_id"),
                 rs.getString("rule_id"),
-                rs.getString("action"),
+                ActionType.valueOf(rs.getString("action")),
                 rs.getString("target"),
                 rs.getDouble("confidence"),
                 rs.getBoolean("allowed"),
                 rs.getString("rejection_reason"),
                 riskScore,
                 rs.getString("risk_factors"),
-                rs.getString("autonomy_level"),
-                rs.getString("outcome"),
+                enumOrNull(AutonomyLevel.class, rs.getString("autonomy_level")),
+                DecisionOutcome.valueOf(rs.getString("outcome")),
                 instant(rs, "decided_at"));
+    }
+
+    private static <E extends Enum<E>> E enumOrNull(Class<E> type, String name) {
+        return name == null ? null : Enum.valueOf(type, name);
     }
 
     private static Instant instant(ResultSet rs, String column) throws SQLException {
