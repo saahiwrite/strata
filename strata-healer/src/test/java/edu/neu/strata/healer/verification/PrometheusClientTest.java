@@ -86,7 +86,9 @@ class PrometheusClientTest {
                 .andRespond(withStatus(HttpStatus.BAD_REQUEST).contentType(MediaType.APPLICATION_JSON)
                         .body("{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"parse error\"}"));
 
-        assertThrows(PrometheusException.class, () -> client.query("up{"));
+        PrometheusException e = assertThrows(PrometheusException.class, () -> client.query("up{"));
+        assertTrue(e.getMessage().contains("up{"));
+        assertTrue(e.getCause().getMessage().contains("parse error"), e.getCause().getMessage());
     }
 
     @Test
@@ -104,6 +106,78 @@ class PrometheusClientTest {
                         MediaType.APPLICATION_JSON));
 
         assertThrows(PrometheusException.class, () -> client.query("1"));
+    }
+
+    @Test
+    void emptyBodyThrows() {
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith("http://prometheus:9090/api/v1/query")))
+                .andRespond(withSuccess());
+
+        PrometheusException e = assertThrows(PrometheusException.class, () -> client.query("up"));
+        assertTrue(e.getMessage().contains("empty response"), e.getMessage());
+    }
+
+    @Test
+    void errorStatusWithErrorFieldThrowsWithThatError() {
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith("http://prometheus:9090/api/v1/query")))
+                .andRespond(withSuccess("{\"status\":\"error\",\"errorType\":\"timeout\",\"error\":\"query timed out\"}",
+                        MediaType.APPLICATION_JSON));
+
+        PrometheusException e = assertThrows(PrometheusException.class, () -> client.query("up"));
+        assertTrue(e.getMessage().contains("query timed out"), e.getMessage());
+    }
+
+    @Test
+    void errorStatusWithoutErrorFieldThrowsUnknownError() {
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith("http://prometheus:9090/api/v1/query")))
+                .andRespond(withSuccess("{\"status\":\"error\"}", MediaType.APPLICATION_JSON));
+
+        PrometheusException e = assertThrows(PrometheusException.class, () -> client.query("up"));
+        assertTrue(e.getMessage().contains("unknown error"), e.getMessage());
+    }
+
+    @Test
+    void missingStatusThrows() {
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith("http://prometheus:9090/api/v1/query")))
+                .andRespond(withSuccess("{\"data\":{\"resultType\":\"vector\",\"result\":[]}}",
+                        MediaType.APPLICATION_JSON));
+
+        assertThrows(PrometheusException.class, () -> client.query("up"));
+    }
+
+    @Test
+    void readsInfinity() {
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith("http://prometheus:9090/api/v1/query")))
+                .andRespond(withSuccess("""
+                        {"status":"success","data":{"resultType":"vector","result":[
+                          {"metric":{"le":"a"},"value":[1794027000,"+Inf"]},
+                          {"metric":{"le":"b"},"value":[1794027000,"-Inf"]}]}}""", MediaType.APPLICATION_JSON));
+
+        List<Sample> samples = client.query("histogram_quantile(0.99, x)");
+        assertEquals(Double.POSITIVE_INFINITY, samples.get(0).value());
+        assertEquals(Double.NEGATIVE_INFINITY, samples.get(1).value());
+    }
+
+    @Test
+    void missingValueThrowsPrometheusException() {
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith("http://prometheus:9090/api/v1/query")))
+                .andRespond(withSuccess("""
+                        {"status":"success","data":{"resultType":"vector","result":[
+                          {"metric":{"service":"order-service"}}]}}""", MediaType.APPLICATION_JSON));
+
+        PrometheusException e = assertThrows(PrometheusException.class, () -> client.query("up"));
+        assertTrue(e.getCause() instanceof NumberFormatException);
+    }
+
+    @Test
+    void nonNumericValueThrowsPrometheusException() {
+        server.expect(requestTo(org.hamcrest.Matchers.startsWith("http://prometheus:9090/api/v1/query")))
+                .andRespond(withSuccess("""
+                        {"status":"success","data":{"resultType":"vector","result":[
+                          {"metric":{},"value":[1794027000,"abc"]}]}}""", MediaType.APPLICATION_JSON));
+
+        PrometheusException e = assertThrows(PrometheusException.class, () -> client.query("up"));
+        assertTrue(e.getMessage().contains("'abc'"), e.getMessage());
     }
 
     @Test
