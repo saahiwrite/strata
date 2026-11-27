@@ -15,7 +15,11 @@ import edu.neu.strata.healer.model.DecisionOutcome;
 import edu.neu.strata.healer.model.Diagnosis;
 import edu.neu.strata.healer.model.RiskAssessment;
 
-// Write side of the decisions table
+/**
+ * Write side of the {@code decisions} table: one row per proposed action, with its risk and outcome.
+ * Outcomes are stored by {@link DecisionOutcome} name; {@code IncidentLifecycle} decides which
+ * outcome may follow which, and {@link IncidentRepository} reads the rows back.
+ */
 @Repository
 public class DecisionStore {
 

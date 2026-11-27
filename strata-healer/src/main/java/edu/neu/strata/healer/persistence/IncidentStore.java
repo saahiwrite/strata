@@ -16,7 +16,10 @@ import edu.neu.strata.healer.detection.Incident;
 import edu.neu.strata.healer.detection.IncidentStatus;
 import edu.neu.strata.healer.model.Alert;
 
-// Write side of the incidents table. IncidentRepository only reads.
+/**
+ * Write side of the {@code incidents} table: opens incidents and closes them with a status.
+ * {@link IncidentRepository} is the read side for the API; only {@code IncidentService} writes here.
+ */
 @Repository
 public class IncidentStore {
 
