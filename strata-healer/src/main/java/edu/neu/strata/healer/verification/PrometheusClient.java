@@ -66,8 +66,22 @@ public class PrometheusClient {
             Map<String, String> labels = new LinkedHashMap<>();
             series.path("metric").fields().forEachRemaining(e -> labels.put(e.getKey(), e.getValue().asText()));
             // value is [unix time, "string value"]; Prometheus writes NaN and +Inf as strings too
-            samples.add(new Sample(labels, Double.parseDouble(series.path("value").path(1).asText())));
+            String value = series.path("value").path(1).asText();
+            try {
+                samples.add(new Sample(labels, parseValue(value)));
+            } catch (NumberFormatException e) {
+                throw new PrometheusException("bad sample value '" + value + "' for " + promql, e);
+            }
         }
         return samples;
+    }
+
+    // Double.parseDouble reads "NaN" but not Prometheus's "+Inf" / "-Inf".
+    private static double parseValue(String value) {
+        return switch (value) {
+            case "+Inf" -> Double.POSITIVE_INFINITY;
+            case "-Inf" -> Double.NEGATIVE_INFINITY;
+            default -> Double.parseDouble(value);
+        };
     }
 }

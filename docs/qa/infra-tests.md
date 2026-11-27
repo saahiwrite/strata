@@ -77,7 +77,7 @@ Run: `mvn -B verify` (all modules). Counts are per test class.
 
 | ID | Test | Req | Expected | Observed | Status |
 |---|---|---|---|---|---|
-| QA-INF-11 | `PrometheusClientTest` (7 tests): vector result, empty result, NaN, bad query, HTTP 500, non-vector result, Prometheus unreachable | FR9 | Values parsed; every error becomes a `PrometheusException` with Prometheus's message | 7/7 pass | Pass |
+| QA-INF-11 | `PrometheusClientTest` (14 tests): vector result, empty result, NaN, +Inf/-Inf, bad query, HTTP 500, non-vector result, empty body, error status with and without an `error` field, missing status, missing or non-numeric value, Prometheus unreachable | FR9 | Values parsed; every error becomes a `PrometheusException` with Prometheus's message | 14/14 pass (after the D-4 fix) | Pass |
 | QA-INF-12 | `PrometheusRecoveryVerifierTest` (12 tests): 3 healthy checks in a row = recovered; still down until timeout = not recovered; one bad check resets the count; error rate above the limit is unhealthy; no traffic counts as no errors; every instance must be up; no `up` series is unhealthy | FR9 | Verdicts as listed | 12/12 pass | Pass |
 | QA-INF-13 | Same class: Prometheus error keeps trying; queries use the `service` label and skip actuator/chaos; service names with quotes or braces are rejected (PromQL injection); interrupt stops waiting; bad settings rejected | FR4, FR9 | As listed | Included in the 12 above, all pass | Pass |
 | QA-INF-14 | `VerificationConfigTest` (2 tests): default wiring; a bad setting stops startup | FR9 | Verifier built with defaults; a max error rate of 2 fails startup | 2/2 pass | Pass |
@@ -116,6 +116,7 @@ the same network the healer uses.
 | D-1 | QA-INF-23 | docker-proxy lets `POST /containers/{id}/exec` through, because `CONTAINERS=1` and `POST=1` allow every POST under `/containers`. The exec instance is created, but `POST /exec/{id}/start` is denied (`EXEC=0`), so no command runs. The compose comment said exec gets 403, which was wrong. | Open, low risk. Comment in `docker-compose.yml` corrected in this PR. A real fix needs our own HAProxy rule for `/containers/*/exec`, tracked for later. |
 | D-2 | Live run (#75) | The first restart in almost every incident failed with `NoHttpResponseException`: the proxy closes idle keep-alive connections after 10s and the pooled client reused a dead one. | Fixed in #75 (`FreshConnectionDockerHttpClient`), covered by QA-INF-15 and QA-INF-24. |
 | D-3 | Live run (#40) | HighMemory at 80% never fired: the JVM hit OutOfMemoryError at about 80% heap with the `/chaos/memory` leak. | Fixed in #40, threshold now 50%, covered by QA-INF-07. |
+| D-4 | QA-INF-11 | `PrometheusClient` used `Double.parseDouble` on sample values. Java reads `NaN` but not Prometheus's `+Inf` / `-Inf`, and a missing or bad value threw `NumberFormatException`. The verifier only catches `PrometheusException`, so one bad sample would escape the recovery check instead of counting as "not recovered yet". | Fixed: `+Inf`/`-Inf` parsed, bad values wrapped in `PrometheusException`. Covered by QA-INF-11. |
 
 Known limitation, not a test failure: the proxy has to allow `POST /containers/create`
 and start for scale out and rollback. It can't check what is inside the create
@@ -139,13 +140,14 @@ Classes in this area:
 | Class | Lines | Branches |
 |---|---|---|
 | PrometheusRecoveryVerifier | 51/52 | 30/32 |
-| PrometheusClient | 25/27 | 6/10 |
+| PrometheusClient | 35/35 | 13/13 |
 | FreshConnectionDockerHttpClient | 8/8 | 2/2 |
 | VerificationConfig, PrometheusException, Sample | 10/10 | none |
 
-`PrometheusClient` has the weakest branch coverage (6 of 10). The missed branches
-are odd responses from Prometheus: an empty body, and a non-success status
-with no `error` field. Tests for these are next.
+`PrometheusClient` had the weakest branch coverage (6 of 10). The missed branches
+were odd responses from Prometheus: an empty body, and a non-success status
+with no `error` field. Tests for these now cover every branch (13 of 13 after the
+D-4 fix added a few). Writing them also found D-4.
 
 ## Summary
 
